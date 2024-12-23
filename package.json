@@ -1,0 +1,14 @@
+{
+  "name": "com.weshape3d.uimanager",
+  "version": "1.0.0",
+  "displayName": "UI管理器",
+  "description": "简易的UI管理器。",
+  "unity": "6000.0",
+  "dependencies": {
+    "com.cysharp.unitask":"2.5.5" 
+  },
+  "author": {
+    "name": "金辉",
+    "email": "2558170073@qq.com"
+  }
+}
