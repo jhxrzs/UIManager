@@ -316,22 +316,22 @@ namespace UIManager
             //显隐同时，异步
             // UI显示前的逻辑
             var beforeTask = BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
-            
+
             // 在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
             var showTask = OnUIShowAsync(_currentShowHideCts.Token);
-            
+
             //等待所有任务完成
             await UniTask.WhenAll(beforeTask, showTask);
 
             // 先隐藏后显示，隐藏异步
             // UI显示前的逻辑
-           // await BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
+            // await BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
 
             //先隐藏后显示，隐藏同步
             //  BeforeUIShowInvoke();
 
             // 在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
-          //  await OnUIShowAsync(_currentShowHideCts.Token);
+            //  await OnUIShowAsync(_currentShowHideCts.Token);
 
             // UI显示后的逻辑
             AfterUIShowedInvoke();
@@ -370,6 +370,12 @@ namespace UIManager
         {
             // 如果当前UI存在显隐行为，立即停止
             StopCurrentShowHideActions();
+
+            // 隐藏子节点
+            foreach (var eachChild in children)
+            {
+                eachChild.Hide();
+            }
 
             //设置状态
             State = UIState.Hiding;
@@ -457,6 +463,7 @@ namespace UIManager
 
             //触发事件
             AfterUIShowedEvent?.Invoke();
+            Debug.Log("触发了事件", gameObject);
         }
 
         /// <summary>
@@ -472,9 +479,6 @@ namespace UIManager
         /// </summary>
         private void InitUIState()
         {
-            //只有叶子节点需要初始化自身状态
-            if (children.Count != 0) return;
-
             //根据当前状态，初始化UI显隐
             if (State == UIState.Showed) ShowNotCheckState();
             else if (State == UIState.Hided) HideNotCheckState();

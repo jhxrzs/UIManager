@@ -27,8 +27,6 @@ namespace UIManager
             
             // 初始化toggle的显隐交互
             foreach (var toggleEntity in toggleInteraction) toggleEntity.Init(this);
-
         }
-        
     }
 }
