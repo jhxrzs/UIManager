@@ -25,12 +25,12 @@ namespace UIManager
                 //切换显隐
                 if (isOn)
                 {
-                    if (IsAsync) ui.ShowAsync(ui.destroyCancellationToken).Forget();
+                    if (IsAsync) _ = ui.ShowAsync(ui.destroyCancellationToken);
                     else ui.Show();
                 }
                 else
                 {
-                    if (IsAsync) ui.HideAsync(ui.destroyCancellationToken).Forget();
+                    if (IsAsync) _ = ui.HideAsync(ui.destroyCancellationToken);
                     else ui.Hide();
                 }
             });

@@ -120,13 +120,13 @@ namespace UIManager
         [ContextMenu("测试异步显示UI")]
         private void TestShowAsync()
         {
-            ShowAsync(destroyCancellationToken).Forget();
+            _ = ShowAsync(destroyCancellationToken);
         }
 
         [ContextMenu("测试异步隐藏UI")]
         private void TestHideAsync()
         {
-            HideAsync(destroyCancellationToken).Forget();
+            _ = HideAsync(destroyCancellationToken);
         }
 
         #endregion

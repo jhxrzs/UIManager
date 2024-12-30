@@ -485,12 +485,12 @@ namespace UIManager
             else if (State == UIState.Showing)
             {
                 HideNotCheckState();
-                ShowAsync(destroyCancellationToken).Forget();
+                _ = ShowAsync(destroyCancellationToken);
             }
             else if (State == UIState.Hiding)
             {
                 ShowNotCheckState();
-                HideAsync(destroyCancellationToken).Forget();
+                _ = HideAsync(destroyCancellationToken);
             }
         }
 

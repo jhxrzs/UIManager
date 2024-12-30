@@ -28,14 +28,14 @@ namespace UIManager
                 //如果是显示
                 if (Action == ShowHideAction.ToShow)
                 {
-                    if (IsAsync) ui.ShowAsync(ui.destroyCancellationToken).Forget();
+                    if (IsAsync) _ = ui.ShowAsync(ui.destroyCancellationToken);
                     else ui.Show();
                     return;
                 }
 
                 if (Action == ShowHideAction.ToHide)
                 {
-                    if (IsAsync) ui.HideAsync(ui.destroyCancellationToken).Forget();
+                    if (IsAsync) _ = ui.HideAsync(ui.destroyCancellationToken);
                     else ui.Hide();
                     return;
                 }
@@ -44,12 +44,12 @@ namespace UIManager
                 {
                     if (ui.State is UIState.Showed or UIState.Showing)
                     {
-                        if (IsAsync) ui.HideAsync(ui.destroyCancellationToken).Forget();
+                        if (IsAsync) _ = ui.HideAsync(ui.destroyCancellationToken);
                         else ui.Hide();
                     }
                     else
                     {
-                        if (IsAsync) ui.ShowAsync(ui.destroyCancellationToken).Forget();
+                        if (IsAsync) _ = ui.ShowAsync(ui.destroyCancellationToken);
                         else ui.Show();
                     }
                 }
