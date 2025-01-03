@@ -142,19 +142,11 @@ namespace UIManager
         /// </summary>
         public void Show()
         {
-            Debug.Log($"显示{name}");
-
             // 如果UI已经是显示状态，则直接返回
-            if (State == UIState.Showed)
-            {
-                Debug.Log($"{name}已经显示，无需再次显示");
-                return;
-            }
-
+            if (State == UIState.Showed)return;
+            
             // 显示UI，不检查当前状态
             ShowNotCheckState();
-
-            Debug.Log($"显示{name}完成");
         }
 
         /// <summary>
@@ -162,19 +154,11 @@ namespace UIManager
         /// </summary>
         public void Hide()
         {
-            Debug.Log($"隐藏{name}", gameObject);
-
             // 如果UI已经是隐藏状态，则直接返回
-            if (State == UIState.Hided)
-            {
-                Debug.Log($"{name}已经隐藏，无需再次隐藏", gameObject);
-                return;
-            }
-
+            if (State == UIState.Hided) return;
+         
             // 隐藏UI，不检查当前状态
             HideNotCheckState();
-
-            Debug.Log($"隐藏{name}完成", gameObject);
         }
 
         /// <summary>
@@ -184,19 +168,11 @@ namespace UIManager
         /// <returns>返回异步任务</returns>
         public async UniTask ShowAsync(CancellationToken cancellationToken)
         {
-            Debug.Log($"异步显示{name}", gameObject);
-
             //如果UI已经是显示状态，则直接返回
-            if (State == UIState.Showed)
-            {
-                Debug.Log($"{name}已经显示，无需再次显示", gameObject);
-                return;
-            }
-
+            if (State == UIState.Showed)  return;
+        
             // 异步显示UI，不检查当前状态
             await ShowNotCheckStateAsync(cancellationToken);
-
-            Debug.Log($"异步显示{name}完成", gameObject);
         }
 
 
@@ -207,19 +183,11 @@ namespace UIManager
         /// <returns> 返回异步任务</returns>
         public async UniTask HideAsync(CancellationToken cancellationToken)
         {
-            Debug.Log($"异步隐藏{name}", gameObject);
-
             //如果UI已经是隐藏状态，则直接返回
-            if (State == UIState.Hided)
-            {
-                Debug.Log($"{name}已经隐藏，无需再次隐藏", gameObject);
-                return;
-            }
-
+            if (State == UIState.Hided)return;
+         
             // 异步隐藏UI，不检查当前状态
             await HideNotCheckStateAsync(cancellationToken);
-
-            Debug.Log($"异步隐藏{name}完成", gameObject);
         }
 
         /// <summary>
@@ -322,17 +290,7 @@ namespace UIManager
 
             //等待所有任务完成
             await UniTask.WhenAll(beforeTask, showTask);
-
-            // 先隐藏后显示，隐藏异步
-            // UI显示前的逻辑
-            // await BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
-
-            //先隐藏后显示，隐藏同步
-            //  BeforeUIShowInvoke();
-
-            // 在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
-            //  await OnUIShowAsync(_currentShowHideCts.Token);
-
+            
             // UI显示后的逻辑
             AfterUIShowedInvoke();
         }
@@ -463,7 +421,6 @@ namespace UIManager
 
             //触发事件
             AfterUIShowedEvent?.Invoke();
-            Debug.Log("触发了事件", gameObject);
         }
 
         /// <summary>
