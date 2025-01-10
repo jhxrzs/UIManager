@@ -1,6 +1,6 @@
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using DG.Tweening;
+using JTween;
 using UnityEngine;
 
 namespace UIManager
@@ -14,7 +14,7 @@ namespace UIManager
         /// <summary>  
         ///  需要显示的UI面板
         /// </summary>
-        [SerializeField,HideInInspector] protected UIBase uiBase;
+        [SerializeField, HideInInspector] protected UIBase uiBase;
 
         /// <summary>
         ///  显示的时间
@@ -22,9 +22,29 @@ namespace UIManager
         [SerializeField] protected float duration = 1f;
 
         /// <summary>
-        ///  动画曲线
+        ///  位置动画曲线
         /// </summary>
-        [SerializeField] protected Ease tweenEase = Ease.InQuad;
+        [SerializeField] protected Ease anchorPosEase = Ease.InQuad;
+
+        /// <summary>
+        ///  旋转动画曲线
+        /// </summary>
+        [SerializeField] protected Ease angleEase = Ease.InQuad;
+
+        /// <summary>
+        ///  缩放动画曲线
+        /// </summary>
+        [SerializeField] protected Ease scaleEase = Ease.InQuad;
+
+        /// <summary>
+        ///  大小动画曲线
+        /// </summary>
+        [SerializeField] protected Ease sizeDeltaEase = Ease.InQuad;
+
+        /// <summary>
+        ///   轴心动画曲线
+        /// </summary>
+        [SerializeField] protected Ease pivotEase = Ease.InQuad;
 
         /// <summary>
         ///  目标位置
@@ -34,7 +54,7 @@ namespace UIManager
         /// <summary>
         ///   RectTransform组件
         /// </summary>
-        [SerializeField,HideInInspector] protected RectTransform rectTransform;
+        [SerializeField, HideInInspector] protected RectTransform rectTransform;
 
         /// <summary>
         ///  当前的异步任务是否完成
@@ -68,27 +88,33 @@ namespace UIManager
         /// </summary>
         protected async UniTask TweenRectTransformAsync(CancellationToken token)
         {
-            //使用这个flag来阻断异步操作
-            _finish = false;
+            //位置动画
+            var anchorPos = rectTransform.Tween(
+                rectTransform.anchoredPosition, target.anchoredPosition,
+                value => rectTransform.anchoredPosition = value, duration, token, anchorPosEase);
 
-            // 使用DoTween插件实现变换
-            rectTransform.DOAnchorPos(target.anchoredPosition, duration).SetEase(tweenEase).SetId(transform);
-            rectTransform.DOScale(target.localScale, duration).SetEase(tweenEase).SetId(transform);
-            rectTransform.DOLocalRotate(target.localEulerAngles, duration).SetEase(tweenEase).SetId(transform);
-            rectTransform.DOSizeDelta(target.sizeDelta, duration).SetEase(tweenEase).SetId(transform);
-            rectTransform.DOPivot(target.pivot, duration).SetEase(tweenEase).SetId(transform)
-                .OnComplete(() => { _finish = true; });
+            // 旋转动画
+            var angle = rectTransform.Tween(
+                rectTransform.localEulerAngles, target.localEulerAngles,
+                value => rectTransform.localEulerAngles = value, duration, token, angleEase);
 
-            // 注册取消异步操作
-            token.Register(() => { DOTween.Kill(transform); });
-            await UniTask.WaitUntil(() => _finish, cancellationToken: token);
+            // 缩放动画
+            var scale = rectTransform.Tween(
+                rectTransform.localScale, target.localScale,
+                value => rectTransform.localScale = value, duration, token, scaleEase);
 
-            // 完成后，设置为目标位置
-            rectTransform.anchoredPosition = target.anchoredPosition;
-            rectTransform.localScale = target.localScale;
-            rectTransform.localEulerAngles = target.localEulerAngles;
-            rectTransform.sizeDelta = target.sizeDelta;
-            rectTransform.pivot = target.pivot;
+            // 大小动画
+            var sizeDelta = rectTransform.Tween(
+                rectTransform.sizeDelta, target.sizeDelta,
+                value => rectTransform.sizeDelta = value, duration, token, sizeDeltaEase);
+
+            // 轴心动画
+            var pivot = rectTransform.Tween(
+                rectTransform.pivot, target.pivot,
+                value => rectTransform.pivot = value, duration, token, pivotEase);
+
+            // 等待所有动画完成
+            await UniTask.WhenAll(anchorPos, angle, scale, sizeDelta, pivot);
         }
     }
 }

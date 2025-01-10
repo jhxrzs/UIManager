@@ -1,14 +1,15 @@
 {
-  "name": "com.weshape3d.uimanager",
+  "name": "com.jh.uimanager",
   "version": "1.0.0",
-  "displayName": "UI管理器",
-  "description": "简易的UI管理器。",
+  "displayName": "UI\u7ba1\u7406\u5668",
+  "description": "\u7b80\u6613\u7684UI\u7ba1\u7406\u5668\u3002",
   "unity": "6000.0",
   "dependencies": {
-    "com.cysharp.unitask":"2.5.5" 
+    "com.cysharp.unitask": "",
+    "com.jh.jtween": ""
   },
   "author": {
-    "name": "金辉",
+    "name": "\u91d1\u8f89",
     "email": "2558170073@qq.com"
   }
 }

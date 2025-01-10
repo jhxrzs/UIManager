@@ -1,6 +1,6 @@
 using System.Threading;
 using Cysharp.Threading.Tasks;
-using DG.Tweening;
+using JTween;
 using UnityEngine;
 
 namespace UIManager
@@ -15,7 +15,7 @@ namespace UIManager
         /// <summary>  
         ///  需要逐渐显示的UI面板
         /// </summary>
-        [SerializeField,HideInInspector] protected UIBase uiBase;
+        [SerializeField, HideInInspector] protected UIBase uiBase;
 
         /// <summary>
         ///  逐渐显示的时间
@@ -30,18 +30,13 @@ namespace UIManager
         /// <summary>
         ///  CanvasGroup组件,用来控制UI面板的透明度
         /// </summary>
-        [SerializeField, HideInInspector]
-        protected CanvasGroup canvasGroup;
+        [SerializeField, HideInInspector] protected CanvasGroup canvasGroup;
 
         /// <summary>
         ///   目标透明度
         /// </summary>
         protected virtual float EndAlpha => 1;
-        
-        /// <summary>
-        ///  当前的异步任务是否完成
-        /// </summary>
-        private bool _finish;
+
 
         private void OnValidate()
         {
@@ -70,18 +65,9 @@ namespace UIManager
         /// </summary>
         protected async UniTask TweenAlphaAsync(CancellationToken token)
         {
-            //使用这个flag来阻断异步操作
-            _finish = false;
-
             // 使用DoTween插件实现逐渐显示的效果,注册完成flag
-            var tween = canvasGroup.DOFade(EndAlpha, duration)
-                .SetEase(tweenEase).OnComplete(() => { _finish = true; });
-            token.Register(() =>
-            {
-                tween.Kill();
-            });
-            await UniTask.WaitUntil(() => _finish, cancellationToken: token);
-            canvasGroup.alpha = EndAlpha;
+            await canvasGroup.Tween(canvasGroup.alpha, EndAlpha, value => canvasGroup.alpha = value, duration, token,
+                tweenEase);
         }
     }
 }
