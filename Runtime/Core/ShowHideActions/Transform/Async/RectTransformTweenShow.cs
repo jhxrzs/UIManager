@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using JTween;
@@ -19,32 +20,32 @@ namespace UIManager
         /// <summary>
         ///  显示的时间
         /// </summary>
-        [SerializeField] protected float duration = 1f;
+        [SerializeField] protected float duration = 0.3f;
 
         /// <summary>
         ///  位置动画曲线
         /// </summary>
-        [SerializeField] protected Ease anchorPosEase = Ease.InQuad;
+        [SerializeField] protected Ease anchorPosEase = Ease.Linear;
 
         /// <summary>
         ///  旋转动画曲线
         /// </summary>
-        [SerializeField] protected Ease angleEase = Ease.InQuad;
+        [SerializeField] protected Ease angleEase = Ease.Linear;
 
         /// <summary>
         ///  缩放动画曲线
         /// </summary>
-        [SerializeField] protected Ease scaleEase = Ease.InQuad;
+        [SerializeField] protected Ease scaleEase = Ease.Linear;
 
         /// <summary>
         ///  大小动画曲线
         /// </summary>
-        [SerializeField] protected Ease sizeDeltaEase = Ease.InQuad;
+        [SerializeField] protected Ease sizeDeltaEase = Ease.Linear;
 
         /// <summary>
         ///   轴心动画曲线
         /// </summary>
-        [SerializeField] protected Ease pivotEase = Ease.InQuad;
+        [SerializeField] protected Ease pivotEase = Ease.Linear;
 
         /// <summary>
         ///  目标位置
@@ -65,6 +66,9 @@ namespace UIManager
         {
             uiBase = GetComponent<UIBase>();
             rectTransform = GetComponent<RectTransform>();
+
+            // 尝试获取目标位置
+            FuzzyFIndTransformTool.TryGetTarget(this);
         }
 
         /// <summary>

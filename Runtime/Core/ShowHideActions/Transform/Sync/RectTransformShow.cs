@@ -1,3 +1,4 @@
+using System.Reflection;
 using UnityEngine;
 
 namespace UIManager
@@ -11,9 +12,8 @@ namespace UIManager
         /// <summary>  
         ///  需要显示的UI面板
         /// </summary>
-        [SerializeField,HideInInspector] protected UIBase uiBase;
+        [SerializeField, HideInInspector] protected UIBase uiBase;
 
-        
         /// <summary>
         ///  目标位置
         /// </summary>
@@ -22,13 +22,15 @@ namespace UIManager
         /// <summary>
         ///   RectTransform组件
         /// </summary>
-        [SerializeField,HideInInspector] protected RectTransform rectTransform;
-        
+        [SerializeField, HideInInspector] protected RectTransform rectTransform;
 
         private void OnValidate()
         {
             uiBase = GetComponent<UIBase>();
             rectTransform = GetComponent<RectTransform>();
+
+            // 尝试获取目标位置
+            FuzzyFIndTransformTool.TryGetTarget(this);
         }
 
         /// <summary>
@@ -50,7 +52,7 @@ namespace UIManager
         /// <summary>
         ///   FadeIn效果
         /// </summary>
-        protected  void SetRectTransform()
+        protected void SetRectTransform()
         {
             // 完成后，设置为目标位置
             rectTransform.anchoredPosition = target.anchoredPosition;

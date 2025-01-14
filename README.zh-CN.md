@@ -1,7 +1,6 @@
 # UIManager
 
 UIManager是一款简易的用来管理UI界面显示隐藏的管理插件。
-它依赖于UniTask插件和Tween插件，前者用来执行异步的显示隐藏操作，后者用来执行UI界面的动画效果。
 
 ## 安装指南
 
@@ -37,7 +36,22 @@ https://gitee.com/wmzjzxyh/jtween.git
 }
 ```
 
-### 3. 导入UIManager插件
+### 3. 导入模糊匹配插件
+
+您可以使用git添加此包体，地址：https://gitee.com/wmzjzxyh/fuzzy-matching.git
+也可以在manifest.json中添加以下代码：
+
+```json
+{
+  "dependencies": {
+    "com.jh.fuzzymatching": "https://gitee.com/wmzjzxyh/fuzzy-matching.git"
+  }
+}
+```
+
+来引入模糊匹配插件。
+
+### 4. 导入UIManager插件
 
 您可以通过地址：https://gitee.com/wmzjzxyh/uimanager.git来导入UIManager插件。
 或者添加以下文本到manifest.json文件中：
@@ -49,4 +63,5 @@ https://gitee.com/wmzjzxyh/jtween.git
   }
 }
 ```
+
 ### 4. 至此，您已经成功导入UIManager插件。

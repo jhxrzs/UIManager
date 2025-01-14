@@ -105,27 +105,46 @@ namespace UIManager
         #region 测试函数
 
         [ContextMenu("测试显示UI")]
-        private void TestShow()
+        public void TestShow()
         {
             Show();
         }
 
         [ContextMenu("测试隐藏UI")]
-        private void TestHide()
+        public void TestHide()
         {
             Hide();
         }
 
         [ContextMenu("测试异步显示UI")]
-        private void TestShowAsync()
+        public void TestShowAsync()
         {
             _ = ShowAsync(destroyCancellationToken);
         }
 
         [ContextMenu("测试异步隐藏UI")]
-        private void TestHideAsync()
+        public void TestHideAsync()
         {
             _ = HideAsync(destroyCancellationToken);
+        }
+
+        [ContextMenu("测试切换UI")]
+        public void TestSwitch(bool isShow)
+        {
+            if (isShow)
+            {
+                Show();
+            }
+            else
+            {
+                Hide();
+            }
+        }
+
+        [ContextMenu("测试异步切换UI")]
+        public void TestSwitchAsync(bool isShow)
+        {
+            _ = isShow ? ShowAsync(destroyCancellationToken) : HideAsync(destroyCancellationToken);
         }
 
         #endregion

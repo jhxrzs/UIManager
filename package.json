@@ -6,10 +6,18 @@
   "unity": "6000.0",
   "dependencies": {
     "com.cysharp.unitask": "",
-    "com.jh.jtween": ""
+    "com.jh.jtween": "",
+    "com.jh.fuzzymatching": ""
   },
   "author": {
     "name": "\u91d1\u8f89",
     "email": "2558170073@qq.com"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "\u57fa\u7840\u793a\u4f8b",
+      "description": "\u5c55\u793aUI\u7ba1\u7406\u5668\u57fa\u672c\u7528\u6cd5\u7684\u793a\u4f8b",
+      "path": "Samples~/BasicExample"
+    }
+  ]
 }
