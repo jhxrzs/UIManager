@@ -451,7 +451,7 @@ namespace UIManager
             }
         }
 
-        private void OnValidate()
+        protected virtual void OnValidate()
         {
             // 寻找所有的父面板，从祖先到父亲
             FindParents();
