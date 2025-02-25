@@ -1,5 +1,4 @@
 #if UNITY_EDITOR
-using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -12,19 +11,27 @@ namespace UIManager
     public class UIBaseHierarchyLabel
     {
         /// <summary>
-        ///  UI的互斥组
+        /// GUIStyle
         /// </summary>
-        private static FieldInfo _mutexGroupType;
+        private static GUIStyle _labelStyle;
 
         /// <summary>
-        ///  UI的互斥组
+        /// GUIStyle
         /// </summary>
-        private static FieldInfo MutexGroupFieldInfo => _mutexGroupType ??= typeof(UIBase).GetField("mutexGroup",
-            BindingFlags.NonPublic | BindingFlags.Instance);
-
+        private static GUIStyle LabelStyle =>
+            _labelStyle ??= new GUIStyle(EditorStyles.label)
+            {
+                normal = { textColor = Color.yellow },
+                alignment = TextAnchor.MiddleRight
+            };
+        
         static UIBaseHierarchyLabel()
         {
-            EditorApplication.hierarchyWindowItemOnGUI += OnHierarchyWindowItemOnGUI;
+            // 确保在编辑器初始化完成后再注册
+            EditorApplication.delayCall += () =>
+            {
+                EditorApplication.hierarchyWindowItemOnGUI += OnHierarchyWindowItemOnGUI;
+            };
         }
 
         private static void OnHierarchyWindowItemOnGUI(int instanceID, Rect selectionRect)
@@ -36,25 +43,15 @@ namespace UIManager
                 if (uiBase != null)
                 {
                     // 获取 mutexGroup 的值
-                    int mutexGroupValue = MutexGroupFieldInfo.GetValue(uiBase) is int value ? value : 0;
-
+                    int mutexGroupValue = new SerializedObject(uiBase).FindProperty("mutexGroup").intValue;
                     string state = uiBase.State is UIState.Showed or UIState.Showing ? "S" : "H";
-                    // 设置标签样式
-                    GUIStyle labelStyle = new GUIStyle(GUI.skin.label)
-                    {
-                        normal =
-                        {
-                            textColor = Color.yellow
-                        },
-                        alignment = TextAnchor.MiddleRight
-                    };
 
                     // 在游戏物体名称右侧绘制 Label
                     float labelWidth = 100;
                     Rect labelRect = new Rect(selectionRect);
                     labelRect.x = labelRect.xMax - labelWidth;
                     labelRect.width = labelWidth;
-                    EditorGUI.LabelField(labelRect, mutexGroupValue.ToString() + " " + state, labelStyle);
+                    EditorGUI.LabelField(labelRect, mutexGroupValue + " " + state, LabelStyle);
                 }
             }
         }

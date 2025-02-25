@@ -5,9 +5,9 @@
   "description": "\u7b80\u6613\u7684UI\u7ba1\u7406\u5668\u3002",
   "unity": "6000.0",
   "dependencies": {
-    "com.cysharp.unitask": "",
-    "com.jh.jtween": "",
-    "com.jh.fuzzymatching": ""
+    "com.cysharp.unitask": "2.5.10",
+    "com.jh.jtween": "1.0.0",
+    "com.jh.fuzzymatching": "1.0.0"
   },
   "author": {
     "name": "\u91d1\u8f89",
