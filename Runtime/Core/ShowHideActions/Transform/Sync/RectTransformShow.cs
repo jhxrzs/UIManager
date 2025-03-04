@@ -30,7 +30,7 @@ namespace UIManager
             rectTransform = GetComponent<RectTransform>();
 
             // 尝试获取目标位置
-            FuzzyFIndTransformTool.TryGetTarget(this);
+            FuzzyFindTransformTool.TryGetTarget(this);
         }
 
         /// <summary>

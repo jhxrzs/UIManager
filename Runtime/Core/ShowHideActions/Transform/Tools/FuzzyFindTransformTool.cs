@@ -12,7 +12,7 @@ namespace UIManager
     ///  使用模糊匹配，尝试自动序列化<see cref="RectTransformShow"/>的RectTransformShow.target的值
     ///  和<see cref="RectTransformTweenShow"/>的RectTransformTweenShow.target的值
     /// </summary>
-    public static class FuzzyFIndTransformTool
+    public static class FuzzyFindTransformTool
     {
         /// <summary>
         ///  目标字段名称
