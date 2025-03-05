@@ -1,4 +1,4 @@
-﻿namespace UIManager
+﻿namespace JH
 {
     /// <summary>
     ///  UI状态

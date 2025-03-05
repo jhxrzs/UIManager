@@ -1,7 +1,7 @@
 using System.Reflection;
 using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     ///  利用RectTransform的DoTween动画来显示UI的同步效果

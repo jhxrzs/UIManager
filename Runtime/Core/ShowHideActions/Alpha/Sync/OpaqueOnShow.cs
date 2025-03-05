@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     ///  利用canvasGroup的alpha值来显示UI

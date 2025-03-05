@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
-namespace UIManager
+namespace JH
 {
     public interface IShowUIBase : IUIBase
     {
@@ -35,13 +34,13 @@ namespace UIManager
         /// <summary>
         ///  暴露给外部，增加UI异步显示行为的事件
         /// </summary>
-        event Func<CancellationToken, UniTask> ShowAsyncActions;
+        event Func<CancellationToken, JTask> ShowAsyncActions;
 
         /// <summary>
         ///  当UI异步显示时执行的逻辑
         /// </summary>
         /// <param name="cancellationToken"> 取消异步的token</param>
         /// <returns>返回异步任务</returns>
-        UniTask ShowAsync(CancellationToken cancellationToken);
+        JTask ShowAsync(CancellationToken cancellationToken);
     }
 }

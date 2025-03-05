@@ -1,4 +1,4 @@
-﻿namespace UIManager
+﻿namespace JH
 {
     /// <summary>
     ///  利用CanvasGroup的alpha属性来隐藏UI的透明效果

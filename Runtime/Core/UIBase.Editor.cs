@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     public partial class UIBase
     {

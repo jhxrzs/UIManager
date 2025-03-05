@@ -1,4 +1,4 @@
-﻿namespace UIManager
+﻿namespace JH
 {
     /// <summary>
     ///  显隐行为

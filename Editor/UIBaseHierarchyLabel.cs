@@ -2,7 +2,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     /// 把UI的互斥组标记出来

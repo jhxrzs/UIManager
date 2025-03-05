@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
-namespace UIManager
+namespace JH
 {
     public interface IHideUIBase:IUIBase
     {
@@ -35,13 +34,13 @@ namespace UIManager
         /// <summary>
         ///  暴露给外部，增加UI异步隐藏行为的事件,可以注册此事件以增加异步显示行为，比如fadeIn/fadeOut/音效/...等
         /// </summary>
-         event Func<CancellationToken, UniTask> HideAsyncActions;
+         event Func<CancellationToken, JTask> HideAsyncActions;
 
         /// <summary>
         ///  异步隐藏UI
         /// </summary>
         /// <param name="cancellationToken"> 取消异步的token</param>
         /// <returns> 返回异步任务</returns>
-        UniTask HideAsync(CancellationToken cancellationToken );
+        JTask HideAsync(CancellationToken cancellationToken );
     }
 }

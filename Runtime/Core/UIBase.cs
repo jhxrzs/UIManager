@@ -2,10 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     ///  UI面板基类，实现了UI的显示隐藏以及对应的异步方法
@@ -66,12 +65,12 @@ namespace UIManager
         /// <summary>
         ///  增加UI异步显示行为的委托
         /// </summary>
-        private Func<CancellationToken, UniTask> _onUIShowAsyncEvent;
+        private Func<CancellationToken, JTask> _onUIShowAsyncEvent;
 
         /// <summary>
         ///  增加UI异步隐藏行为的委托
         /// </summary>
-        private Func<CancellationToken, UniTask> _onUIHideAsyncEvent;
+        private Func<CancellationToken, JTask> _onUIHideAsyncEvent;
 
         /// <summary>
         ///  当前的显示/隐藏行为的取消token
@@ -109,7 +108,7 @@ namespace UIManager
         /// <summary>
         ///  暴露给外部，增加UI异步隐藏行为的事件,可以注册此事件以增加异步显示行为，比如fadeIn/fadeOut/音效/...等
         /// </summary>
-        public event Func<CancellationToken, UniTask> HideAsyncActions
+        public event Func<CancellationToken, JTask> HideAsyncActions
         {
             add => _onUIHideAsyncEvent += value;
             remove => _onUIHideAsyncEvent -= value;
@@ -118,7 +117,7 @@ namespace UIManager
         /// <summary>
         ///  暴露给外部，增加UI异步显示行为的事件
         /// </summary>
-        public event Func<CancellationToken, UniTask> ShowAsyncActions
+        public event Func<CancellationToken, JTask> ShowAsyncActions
         {
             add => _onUIShowAsyncEvent += value;
             remove => _onUIShowAsyncEvent -= value;
@@ -166,7 +165,7 @@ namespace UIManager
         /// </summary>
         /// <param name="cancellationToken"> 取消异步的token</param>
         /// <returns>返回异步任务</returns>
-        public async UniTask ShowAsync(CancellationToken cancellationToken)
+        public async JTask ShowAsync(CancellationToken cancellationToken)
         {
             //如果UI已经是显示状态，则直接返回
             if (State == UIState.Showed)  return;
@@ -181,7 +180,7 @@ namespace UIManager
         /// </summary>
         /// <param name="cancellationToken"> 取消异步的token</param>
         /// <returns> 返回异步任务</returns>
-        public async UniTask HideAsync(CancellationToken cancellationToken)
+        public async JTask HideAsync(CancellationToken cancellationToken)
         {
             //如果UI已经是隐藏状态，则直接返回
             if (State == UIState.Hided)return;
@@ -211,23 +210,23 @@ namespace UIManager
         /// <summary>
         ///  在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
         /// </summary>
-        protected virtual async UniTask OnUIShowAsync(CancellationToken cancellationToken)
+        protected virtual async JTask OnUIShowAsync(CancellationToken cancellationToken)
         {
             //执行所有的异步显示行为
             if (_onUIShowAsyncEvent == null) return;
-            var taskList = _onUIShowAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, UniTask>>();
-            await UniTask.WhenAll(taskList.Select(i => i(cancellationToken)));
+            var taskList = _onUIShowAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, JTask>>();
+            await JTask.WhenAll(taskList.Select(i => i(cancellationToken)));
         }
 
         /// <summary>
         ///  当UI异步隐藏时执行的逻辑
         /// </summary>
-        protected virtual async UniTask OnUIHideAsync(CancellationToken cancellationToken)
+        protected virtual async JTask OnUIHideAsync(CancellationToken cancellationToken)
         {
             //执行所有的异步隐藏行为
             if (_onUIHideAsyncEvent == null) return;
-            var taskList = _onUIHideAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, UniTask>>();
-            await UniTask.WhenAll(taskList.Select(i => i.Invoke(cancellationToken)));
+            var taskList = _onUIHideAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, JTask>>();
+            await JTask.WhenAll(taskList.Select(i => i.Invoke(cancellationToken)));
         }
 
         /// <summary>
@@ -266,7 +265,7 @@ namespace UIManager
         /// <summary>
         ///  异步显示UI，不检查当前状态
         /// </summary>
-        private async UniTask ShowNotCheckStateAsync(CancellationToken cancellationToken)
+        private async JTask ShowNotCheckStateAsync(CancellationToken cancellationToken)
         {
             //如果当前UI存在显隐行为，立即停止
             StopCurrentShowHideActions();
@@ -289,7 +288,7 @@ namespace UIManager
             var showTask = OnUIShowAsync(_currentShowHideCts.Token);
 
             //等待所有任务完成
-            await UniTask.WhenAll(beforeTask, showTask);
+            await JTask.WhenAll(beforeTask, showTask);
             
             // UI显示后的逻辑
             AfterUIShowedInvoke();
@@ -298,7 +297,7 @@ namespace UIManager
         /// <summary>
         /// 异步隐藏UI，不检查当前状态
         /// </summary>
-        private async UniTask HideNotCheckStateAsync(CancellationToken cancellationToken)
+        private async JTask HideNotCheckStateAsync(CancellationToken cancellationToken)
         {
             // UI隐藏前的逻辑
             BeforeUIHideInvoke();
@@ -386,7 +385,7 @@ namespace UIManager
         /// <summary>
         ///  在UI异步显示前执行的逻辑
         /// </summary>
-        private async UniTask BeforeUIShowAsyncInvoke(CancellationToken cancellationToken)
+        private async JTask BeforeUIShowAsyncInvoke(CancellationToken cancellationToken)
         {
             //设置状态
             State = UIState.Showing;
@@ -403,7 +402,7 @@ namespace UIManager
                 => eachParent.ShowAsync(cancellationToken)));
 
             //等待所有任务完成
-            await UniTask.WhenAll(taskList);
+            await JTask.WhenAll(taskList);
         }
 
         /// <summary>

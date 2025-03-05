@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace UIManager
+namespace JH
 {  /// <summary>
     ///  利用RectTransform的DoTween动画来隐藏UI的同步效果
     /// </summary>

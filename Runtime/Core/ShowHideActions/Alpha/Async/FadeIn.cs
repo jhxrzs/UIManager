@@ -1,9 +1,7 @@
 using System.Threading;
-using Cysharp.Threading.Tasks;
-using JTween;
 using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     /// 逐渐显示的UI动画
@@ -63,7 +61,7 @@ namespace UIManager
         /// <summary>
         ///   FadeIn效果
         /// </summary>
-        protected async UniTask TweenAlphaAsync(CancellationToken token)
+        protected async JTask TweenAlphaAsync(CancellationToken token)
         {
             // 使用DoTween插件实现逐渐显示的效果,注册完成flag
             await canvasGroup.Tween(canvasGroup.alpha, EndAlpha, value =>

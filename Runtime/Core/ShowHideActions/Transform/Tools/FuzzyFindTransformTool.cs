@@ -1,12 +1,11 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using FuzzyMatching;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     ///  使用模糊匹配，尝试自动序列化<see cref="RectTransformShow"/>的RectTransformShow.target的值

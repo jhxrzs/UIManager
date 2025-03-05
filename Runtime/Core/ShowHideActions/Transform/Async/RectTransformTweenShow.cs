@@ -1,10 +1,8 @@
-using System.Reflection;
 using System.Threading;
-using Cysharp.Threading.Tasks;
-using JTween;
+
 using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     ///  利用RectTransform的DoTween动画来显示UI的异步效果
@@ -90,7 +88,7 @@ namespace UIManager
         /// <summary>
         ///   FadeIn效果
         /// </summary>
-        protected async UniTask TweenRectTransformAsync(CancellationToken token)
+        protected async JTask TweenRectTransformAsync(CancellationToken token)
         {
             //位置动画
             var anchorPos = rectTransform.Tween(
@@ -118,7 +116,7 @@ namespace UIManager
                 value => rectTransform.pivot = value, duration, token, pivotEase);
 
             // 等待所有动画完成
-            await UniTask.WhenAll(anchorPos, angle, scale, sizeDelta, pivot);
+            await JTask.WhenAll(anchorPos, angle, scale, sizeDelta, pivot);
         }
     }
 }

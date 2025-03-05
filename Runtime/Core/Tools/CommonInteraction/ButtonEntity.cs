@@ -2,7 +2,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     ///   按钮的显隐交互实体类

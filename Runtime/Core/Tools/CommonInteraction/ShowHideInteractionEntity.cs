@@ -1,7 +1,7 @@
 ﻿using System;
 using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     ///  显示隐藏的交互实体类

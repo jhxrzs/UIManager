@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     ///  显示和隐藏的交互

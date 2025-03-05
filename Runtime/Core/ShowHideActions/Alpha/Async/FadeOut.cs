@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace UIManager
+namespace JH
 {
     /// <summary>
     /// 逐渐隐藏的UI动画
