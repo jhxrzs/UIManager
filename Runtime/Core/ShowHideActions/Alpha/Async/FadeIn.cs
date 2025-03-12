@@ -63,7 +63,6 @@ namespace JH
         /// </summary>
         protected async JTask TweenAlphaAsync(CancellationToken token)
         {
-            // 使用DoTween插件实现逐渐显示的效果,注册完成flag
             await canvasGroup.Tween(canvasGroup.alpha, EndAlpha, value =>
                 {
                     canvasGroup.alpha = value;

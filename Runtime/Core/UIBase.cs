@@ -142,8 +142,8 @@ namespace JH
         public void Show()
         {
             // 如果UI已经是显示状态，则直接返回
-            if (State == UIState.Showed)return;
-            
+            if (State == UIState.Showed) return;
+
             // 显示UI，不检查当前状态
             ShowNotCheckState();
         }
@@ -155,7 +155,7 @@ namespace JH
         {
             // 如果UI已经是隐藏状态，则直接返回
             if (State == UIState.Hided) return;
-         
+
             // 隐藏UI，不检查当前状态
             HideNotCheckState();
         }
@@ -168,12 +168,11 @@ namespace JH
         public async JTask ShowAsync(CancellationToken cancellationToken)
         {
             //如果UI已经是显示状态，则直接返回
-            if (State == UIState.Showed)  return;
-        
+            if (State == UIState.Showed) return;
+
             // 异步显示UI，不检查当前状态
             await ShowNotCheckStateAsync(cancellationToken);
         }
-
 
         /// <summary>
         ///  异步隐藏UI
@@ -183,8 +182,8 @@ namespace JH
         public async JTask HideAsync(CancellationToken cancellationToken)
         {
             //如果UI已经是隐藏状态，则直接返回
-            if (State == UIState.Hided)return;
-         
+            if (State == UIState.Hided) return;
+
             // 异步隐藏UI，不检查当前状态
             await HideNotCheckStateAsync(cancellationToken);
         }
@@ -289,7 +288,7 @@ namespace JH
 
             //等待所有任务完成
             await JTask.WhenAll(beforeTask, showTask);
-            
+
             // UI显示后的逻辑
             AfterUIShowedInvoke();
         }
@@ -398,7 +397,7 @@ namespace JH
                 .Select(t => t.HideAsync(cancellationToken)).ToList();
 
             //显示父节点中，隐藏的节点
-            taskList.AddRange(Enumerable.Select(parents, eachParent
+            taskList.AddRange(parents.Select(eachParent
                 => eachParent.ShowAsync(cancellationToken)));
 
             //等待所有任务完成

@@ -21,14 +21,13 @@ namespace JH
         {
             uiBase.HideAsyncActions += TweenAlphaAsync;
         }
-        
+
         /// <summary>
         ///  禁用脚本时，取消监听UI面板的异步隐藏事件
         /// </summary>
         protected override void OnDestroy()
         {
-            if(uiBase != null)   uiBase.HideAsyncActions -= TweenAlphaAsync;
+            if (uiBase != null) uiBase.HideAsyncActions -= TweenAlphaAsync;
         }
-        
     }
 }

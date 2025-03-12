@@ -1,11 +1,12 @@
 ﻿using UnityEngine;
 
 namespace JH
-{  /// <summary>
+{
+    /// <summary>
     ///  利用RectTransform的DoTween动画来隐藏UI的异步效果
     /// </summary>
     [RequireComponent(typeof(UIBase))]
-    public class RectTransformTweenHide :RectTransformTweenShow
+    public class RectTransformTweenHide : RectTransformTweenShow
     {
         /// <summary>
         ///  激活脚本时，监听UI面板的异步显示事件
