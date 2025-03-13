@@ -143,6 +143,31 @@ namespace JH
         {
             _ = HideAsync(destroyCancellationToken);
         }
+#if ODIN_INSPECTOR
+        [FoldoutGroup("测试")]
+        [Button("测试切换UI")]
+#endif
+        [ContextMenu("测试切换UI")]
+        public void TestSwitch(bool isShow)
+        {
+            if (isShow)
+            {
+                Show();
+            }
+            else
+            {
+                Hide();
+            }
+        }
+#if ODIN_INSPECTOR
+        [FoldoutGroup("测试")]
+        [Button("测试异步切换UI")]
+#endif
+        [ContextMenu("测试异步切换UI")]
+        public void TestSwitchAsync(bool isShow)
+        {
+            _ = isShow ? ShowAsync(destroyCancellationToken) : HideAsync(destroyCancellationToken);
+        }
 
         #endregion
     }

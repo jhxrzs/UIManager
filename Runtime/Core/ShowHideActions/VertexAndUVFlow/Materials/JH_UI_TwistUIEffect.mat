@@ -29,12 +29,21 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _ColorMask: 15
     - _EDGE_SMOOTH: 0
     - _EffectAmount: 1
+    - _SinAmplitude: 0.123
+    - _SinFrequency: 16.2
+    - _Stencil: 0
+    - _StencilComp: 8
+    - _StencilOp: 0
+    - _StencilReadMask: 255
+    - _StencilWriteMask: 255
     - _TwistIntensity: 1.6
     - _ZOOM: 0
     m_Colors:
-    - _EndPointUV: {r: 0, g: 0, b: 0, a: 0}
-    - _EndScreenPoint: {r: 1, g: 1, b: 0, a: 0}
+    - _EndPointUV: {r: 1, g: 1, b: 0, a: 0}
+    - _EndScreenPoint: {r: 0, g: 0, b: 0, a: 0}
+    - _UVOffset: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
