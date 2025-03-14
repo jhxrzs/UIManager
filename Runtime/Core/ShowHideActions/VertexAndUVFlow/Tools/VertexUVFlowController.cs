@@ -35,6 +35,11 @@ namespace JH
         [SerializeField] private SortMode sortMode = SortMode.Distance;
 
         /// <summary>
+        ///  是否反向排序
+        /// </summary>
+        [SerializeField] private bool sortInverse;
+
+        /// <summary>
         ///  当排序模式为角度模式时，在屏幕空间和这个向量求角度
         /// </summary>
         [SerializeField] private Vector2 screenOriginVector = Vector2.right;
@@ -78,6 +83,7 @@ namespace JH
 
                 // 排序
                 var sortedVertexUVFlows = SortVertexUVFlows();
+                if (sortInverse) sortedVertexUVFlows.Reverse();
 
                 // 总元素个数
                 var count = sortedVertexUVFlows.Count;
@@ -167,8 +173,6 @@ namespace JH
 
         private void OnValidate()
         {
-            Debug.Log("OnValidate");
-
             // 初始化UI相机
             var canvas = GetComponentInParent<Canvas>();
             uiCamera = canvas.renderMode == RenderMode.ScreenSpaceOverlay

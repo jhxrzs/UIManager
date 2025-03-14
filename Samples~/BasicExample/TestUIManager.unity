@@ -371,7 +371,7 @@ MonoBehaviour:
   onValueChanged:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 749166028}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestSwitchAsync
         m_Mode: 0
@@ -540,9 +540,9 @@ RectTransform:
   - {fileID: 355666998}
   m_Father: {fileID: 404215005}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 292.18774, y: 489.66992}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 1252.1877, y: 1029.6699}
   m_SizeDelta: {x: 160, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &209528213
@@ -589,7 +589,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 795638957}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: JH.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestShowAsync
         m_Mode: 1
@@ -821,8 +821,8 @@ MonoBehaviour:
   - {x: -150, y: 150, z: 0}
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
-  distanceIndex: 03000000020000000000000001000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  distanceIndex: 02000000030000000100000000000000
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 301380375}
   graphic: {fileID: 301380374}
@@ -956,11 +956,11 @@ GameObject:
   - component: {fileID: 324057685}
   - component: {fileID: 324057687}
   - component: {fileID: 324057686}
-  - component: {fileID: 324057692}
   - component: {fileID: 324057691}
   - component: {fileID: 324057690}
   - component: {fileID: 324057689}
   - component: {fileID: 324057688}
+  - component: {fileID: 324057692}
   m_Layer: 5
   m_Name: "\u53F3"
   m_TagString: Untagged
@@ -1107,7 +1107,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 324057684}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f1134969a1934a718f37730b5c50e699, type: 3}
+  m_Script: {fileID: 11500000, guid: dca4f1c226cb2d0498b6a83deca5128e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   mutexGroup: 1
@@ -1116,8 +1116,12 @@ MonoBehaviour:
   parents: []
   children: []
   siblings:
-  - {fileID: 749166028}
+  - {fileID: 749166033}
   <State>k__BackingField: 1
+  buttonInteraction: []
+  toggleInteraction:
+  - <IsAsync>k__BackingField: 1
+    toggle: {fileID: 1540836522}
 --- !u!1 &355666997
 GameObject:
   m_ObjectHideFlags: 0
@@ -1232,7 +1236,7 @@ MonoBehaviour:
   m_BlockingObjects: 0
   m_BlockingMask:
     serializedVersion: 2
-    m_Bits: 55
+    m_Bits: 4294967295
 --- !u!114 &404215003
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1485,8 +1489,8 @@ MonoBehaviour:
   - {x: -150, y: 150, z: 0}
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
-  distanceIndex: 01000000000000000200000003000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  distanceIndex: 01000000020000000000000003000000
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 507728566}
   graphic: {fileID: 507728565}
@@ -2041,7 +2045,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 795638957}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: JH.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestHideAsync
         m_Mode: 1
@@ -2174,7 +2178,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1280658755}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestShow
         m_Mode: 1
@@ -2235,11 +2239,11 @@ GameObject:
   - component: {fileID: 749166025}
   - component: {fileID: 749166027}
   - component: {fileID: 749166026}
-  - component: {fileID: 749166028}
   - component: {fileID: 749166032}
   - component: {fileID: 749166029}
   - component: {fileID: 749166031}
   - component: {fileID: 749166030}
+  - component: {fileID: 749166033}
   m_Layer: 5
   m_Name: "\u5DE6"
   m_TagString: Untagged
@@ -2305,26 +2309,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 749166024}
   m_CullTransparentMesh: 1
---- !u!114 &749166028
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 749166024}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f1134969a1934a718f37730b5c50e699, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  mutexGroup: 0
-  fixedSiblingIndex: 0
-  maxSiblingIndex: 3
-  parents: []
-  children: []
-  siblings:
-  - {fileID: 324057692}
-  <State>k__BackingField: 1
 --- !u!114 &749166029
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2337,7 +2321,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b596acb6fbc14fcd83e6b1bfde7bcc58, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 749166028}
+  uiBase: {fileID: 749166033}
   duration: 0.3
   anchorPosEase: 17
   angleEase: 17
@@ -2358,7 +2342,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: df9a352c4be59284599a0c2869e5fefe, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 749166028}
+  uiBase: {fileID: 749166033}
   duration: 0.3
   anchorPosEase: 16
   angleEase: 16
@@ -2379,7 +2363,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a3cfa5c7d15894c44bf481cb48e0fcf1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 749166028}
+  uiBase: {fileID: 749166033}
   target: {fileID: 139276419}
   rectTransform: {fileID: 749166025}
 --- !u!114 &749166032
@@ -2394,9 +2378,33 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 319be853855d62a4a96c048f0a4299cd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 749166028}
+  uiBase: {fileID: 749166033}
   target: {fileID: 2108511528}
   rectTransform: {fileID: 749166025}
+--- !u!114 &749166033
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 749166024}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dca4f1c226cb2d0498b6a83deca5128e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mutexGroup: 0
+  fixedSiblingIndex: 0
+  maxSiblingIndex: 3
+  parents: []
+  children: []
+  siblings:
+  - {fileID: 324057692}
+  <State>k__BackingField: 1
+  buttonInteraction: []
+  toggleInteraction:
+  - <IsAsync>k__BackingField: 1
+    toggle: {fileID: 92853511}
 --- !u!1 &792135393
 GameObject:
   m_ObjectHideFlags: 0
@@ -2480,7 +2488,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1280658755}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestShowAsync
         m_Mode: 1
@@ -2541,7 +2549,6 @@ GameObject:
   - component: {fileID: 795638950}
   - component: {fileID: 795638959}
   - component: {fileID: 795638958}
-  - component: {fileID: 795638957}
   - component: {fileID: 795638956}
   - component: {fileID: 795638955}
   - component: {fileID: 795638954}
@@ -2549,6 +2556,7 @@ GameObject:
   - component: {fileID: 795638952}
   - component: {fileID: 795638951}
   - component: {fileID: 795638960}
+  - component: {fileID: 795638961}
   m_Layer: 5
   m_Name: "\u56FE\u7247"
   m_TagString: Untagged
@@ -2603,8 +2611,8 @@ MonoBehaviour:
   - {x: -211.1877, y: 138.6699, z: 0}
   - {x: 211.1877, y: 138.6699, z: 0}
   - {x: 211.1877, y: -138.6699, z: 0}
-  distanceIndex: 03000000000000000200000001000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  distanceIndex: 02000000030000000100000000000000
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 795638959}
   graphic: {fileID: 795638958}
@@ -2634,7 +2642,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fff04f8816784a3c9a99a2a98d814a95, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 795638957}
+  uiBase: {fileID: 795638961}
   duration: 0.5
   tweenEase: 17
   vertexUVFlowsController: {fileID: 795638960}
@@ -2651,7 +2659,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 38649d6bfaef46d1ae4471a2b60b2168, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 795638957}
+  uiBase: {fileID: 795638961}
   canvasGroup: {fileID: 795638952}
   vertexUVFlowsController: {fileID: 795638960}
 --- !u!114 &795638955
@@ -2666,7 +2674,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 528df411264d4337b253f96c4afb98ad, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 795638957}
+  uiBase: {fileID: 795638961}
   canvasGroup: {fileID: 795638952}
   vertexUVFlowsController: {fileID: 795638960}
 --- !u!114 &795638956
@@ -2681,30 +2689,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e4bf08c246d09cf4b937638bc8e0cdcf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 795638957}
+  uiBase: {fileID: 795638961}
   duration: 0.5
   tweenEase: 17
   vertexUVFlowsController: {fileID: 795638960}
   canvasGroup: {fileID: 795638952}
---- !u!114 &795638957
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 795638949}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f1134969a1934a718f37730b5c50e699, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  mutexGroup: 0
-  fixedSiblingIndex: 0
-  maxSiblingIndex: 0
-  parents: []
-  children: []
-  siblings: []
-  <State>k__BackingField: 0
 --- !u!114 &795638958
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2756,12 +2745,40 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   effectAmount: 0
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   sortMode: 1
+  sortInverse: 0
   screenOriginVector: {x: 1, y: 0}
   delayBetween: 0.05
   materialPrefab: {fileID: 2100000, guid: 0e357ce7d0e13c147a097cd286ff96a5, type: 2}
+--- !u!114 &795638961
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 795638949}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dca4f1c226cb2d0498b6a83deca5128e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mutexGroup: 0
+  fixedSiblingIndex: 0
+  maxSiblingIndex: 0
+  parents: []
+  children: []
+  siblings: []
+  <State>k__BackingField: 0
+  buttonInteraction:
+  - <IsAsync>k__BackingField: 1
+    action: 1
+    button: {fileID: 209528213}
+  - <IsAsync>k__BackingField: 1
+    action: 0
+    button: {fileID: 680871235}
+  toggleInteraction: []
 --- !u!1 &830141926
 GameObject:
   m_ObjectHideFlags: 0
@@ -2845,7 +2862,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1208825860}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestHide
         m_Mode: 1
@@ -3128,7 +3145,7 @@ MonoBehaviour:
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
   distanceIndex: 00000000010000000300000002000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 899155202}
   graphic: {fileID: 899155201}
@@ -3302,7 +3319,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1208825860}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestHideAsync
         m_Mode: 1
@@ -3443,11 +3460,11 @@ GameObject:
   - component: {fileID: 1208825867}
   - component: {fileID: 1208825866}
   - component: {fileID: 1208825865}
-  - component: {fileID: 1208825860}
   - component: {fileID: 1208825864}
   - component: {fileID: 1208825863}
   - component: {fileID: 1208825862}
   - component: {fileID: 1208825861}
+  - component: {fileID: 1208825869}
   m_Layer: 5
   m_Name: Image
   m_TagString: Untagged
@@ -3455,26 +3472,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1208825860
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1208825859}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f1134969a1934a718f37730b5c50e699, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  mutexGroup: 0
-  fixedSiblingIndex: 0
-  maxSiblingIndex: 1
-  parents: []
-  children: []
-  siblings:
-  - {fileID: 1280658755}
-  <State>k__BackingField: 1
 --- !u!114 &1208825861
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3487,7 +3484,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55ec9523eb8e4262bd1fa916cc59c0db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 1208825860}
+  uiBase: {fileID: 1208825869}
   canvasGroup: {fileID: 1208825865}
 --- !u!114 &1208825862
 MonoBehaviour:
@@ -3501,7 +3498,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7c42d48823af462caa8d585e8cdaa071, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 1208825860}
+  uiBase: {fileID: 1208825869}
   canvasGroup: {fileID: 1208825865}
 --- !u!114 &1208825863
 MonoBehaviour:
@@ -3515,7 +3512,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bd2a94708c4ebba4db7ba53d7729e12c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 1208825860}
+  uiBase: {fileID: 1208825869}
   duration: 0.3
   tweenEase: 4
   canvasGroup: {fileID: 1208825865}
@@ -3531,7 +3528,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8f8aeee773b4ee7438447be891a02ced, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 1208825860}
+  uiBase: {fileID: 1208825869}
   duration: 0.3
   tweenEase: 4
   canvasGroup: {fileID: 1208825865}
@@ -3604,6 +3601,40 @@ RectTransform:
   m_AnchoredPosition: {x: 92, y: -50}
   m_SizeDelta: {x: 100, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1208825869
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1208825859}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dca4f1c226cb2d0498b6a83deca5128e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mutexGroup: 0
+  fixedSiblingIndex: 0
+  maxSiblingIndex: 1
+  parents: []
+  children: []
+  siblings:
+  - {fileID: 1280658764}
+  <State>k__BackingField: 1
+  buttonInteraction:
+  - <IsAsync>k__BackingField: 0
+    action: 1
+    button: {fileID: 1477357613}
+  - <IsAsync>k__BackingField: 0
+    action: 0
+    button: {fileID: 830141928}
+  - <IsAsync>k__BackingField: 1
+    action: 1
+    button: {fileID: 1581019222}
+  - <IsAsync>k__BackingField: 1
+    action: 0
+    button: {fileID: 974032211}
+  toggleInteraction: []
 --- !u!1 &1280658754
 GameObject:
   m_ObjectHideFlags: 0
@@ -3616,11 +3647,11 @@ GameObject:
   - component: {fileID: 1280658762}
   - component: {fileID: 1280658761}
   - component: {fileID: 1280658760}
-  - component: {fileID: 1280658755}
   - component: {fileID: 1280658759}
   - component: {fileID: 1280658758}
   - component: {fileID: 1280658757}
   - component: {fileID: 1280658756}
+  - component: {fileID: 1280658764}
   m_Layer: 5
   m_Name: Image (1)
   m_TagString: Untagged
@@ -3628,26 +3659,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1280658755
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1280658754}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f1134969a1934a718f37730b5c50e699, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  mutexGroup: 0
-  fixedSiblingIndex: 0
-  maxSiblingIndex: 0
-  parents: []
-  children: []
-  siblings:
-  - {fileID: 1208825860}
-  <State>k__BackingField: 0
 --- !u!114 &1280658756
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3660,7 +3671,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55ec9523eb8e4262bd1fa916cc59c0db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 1280658755}
+  uiBase: {fileID: 1280658764}
   canvasGroup: {fileID: 1280658760}
 --- !u!114 &1280658757
 MonoBehaviour:
@@ -3674,7 +3685,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7c42d48823af462caa8d585e8cdaa071, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 1280658755}
+  uiBase: {fileID: 1280658764}
   canvasGroup: {fileID: 1280658760}
 --- !u!114 &1280658758
 MonoBehaviour:
@@ -3688,7 +3699,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bd2a94708c4ebba4db7ba53d7729e12c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 1280658755}
+  uiBase: {fileID: 1280658764}
   duration: 0.3
   tweenEase: 4
   canvasGroup: {fileID: 1280658760}
@@ -3704,7 +3715,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8f8aeee773b4ee7438447be891a02ced, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiBase: {fileID: 1280658755}
+  uiBase: {fileID: 1280658764}
   duration: 0.3
   tweenEase: 4
   canvasGroup: {fileID: 1280658760}
@@ -3777,6 +3788,40 @@ RectTransform:
   m_AnchoredPosition: {x: 554.1, y: -50}
   m_SizeDelta: {x: 100, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1280658764
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1280658754}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dca4f1c226cb2d0498b6a83deca5128e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  mutexGroup: 0
+  fixedSiblingIndex: 0
+  maxSiblingIndex: 0
+  parents: []
+  children: []
+  siblings:
+  - {fileID: 1208825869}
+  <State>k__BackingField: 0
+  buttonInteraction:
+  - <IsAsync>k__BackingField: 0
+    action: 1
+    button: {fileID: 706638397}
+  - <IsAsync>k__BackingField: 0
+    action: 0
+    button: {fileID: 1959091758}
+  - <IsAsync>k__BackingField: 1
+    action: 1
+    button: {fileID: 792135395}
+  - <IsAsync>k__BackingField: 1
+    action: 0
+    button: {fileID: 1540152158}
+  toggleInteraction: []
 --- !u!1 &1346519782
 GameObject:
   m_ObjectHideFlags: 0
@@ -3957,7 +4002,7 @@ MonoBehaviour:
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
   distanceIndex: 01000000020000000000000003000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 1379080683}
   graphic: {fileID: 1379080682}
@@ -4043,7 +4088,7 @@ Material:
     - _TwistIntensity: 1.6
     - _ZOOM: 0
     m_Colors:
-    - _EndPointUV: {r: 1, g: 0, b: 0, a: 0}
+    - _EndPointUV: {r: 1, g: 1, b: 0, a: 0}
     - _EndScreenPoint: {r: 0, g: 0, b: 0, a: 0}
     - _UVOffset: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
@@ -4180,7 +4225,7 @@ MonoBehaviour:
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
   distanceIndex: 02000000030000000100000000000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 1464108004}
   graphic: {fileID: 1464108003}
@@ -4307,7 +4352,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1208825860}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestShow
         m_Mode: 1
@@ -4506,7 +4551,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1280658755}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestHideAsync
         m_Mode: 1
@@ -4641,7 +4686,7 @@ MonoBehaviour:
   onValueChanged:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 324057692}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestSwitchAsync
         m_Mode: 0
@@ -4737,7 +4782,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1208825860}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestShowAsync
         m_Mode: 1
@@ -4843,8 +4888,8 @@ MonoBehaviour:
   - {x: -150, y: 150, z: 0}
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
-  distanceIndex: 01000000000000000200000003000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  distanceIndex: 01000000020000000000000003000000
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 1615857030}
   graphic: {fileID: 1615857029}
@@ -5147,7 +5192,7 @@ MonoBehaviour:
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
   distanceIndex: 02000000030000000100000000000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 1690102315}
   graphic: {fileID: 1690102314}
@@ -5312,7 +5357,7 @@ Material:
     - _TwistIntensity: 1.6
     - _ZOOM: 0
     m_Colors:
-    - _EndPointUV: {r: 1, g: 0, b: 0, a: 0}
+    - _EndPointUV: {r: 1, g: 1, b: 0, a: 0}
     - _EndScreenPoint: {r: 0, g: 0, b: 0, a: 0}
     - _UVOffset: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
@@ -5481,7 +5526,7 @@ Material:
     - _TwistIntensity: 1.6
     - _ZOOM: 0
     m_Colors:
-    - _EndPointUV: {r: 1, g: 0, b: 0, a: 0}
+    - _EndPointUV: {r: 1, g: 1, b: 0, a: 0}
     - _EndScreenPoint: {r: 0, g: 0, b: 0, a: 0}
     - _UVOffset: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
@@ -5543,7 +5588,7 @@ MonoBehaviour:
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
   distanceIndex: 02000000010000000300000000000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 1881955009}
   graphic: {fileID: 1881955008}
@@ -5644,7 +5689,7 @@ MonoBehaviour:
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
   distanceIndex: 03000000020000000000000001000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 1911211197}
   graphic: {fileID: 1911211196}
@@ -5771,7 +5816,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1280658755}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: UIManager.UIBase, com.jh.uimanager.runtime
         m_MethodName: TestHide
         m_Mode: 1
@@ -5877,8 +5922,8 @@ MonoBehaviour:
   - {x: -150, y: 150, z: 0}
   - {x: 150, y: 150, z: 0}
   - {x: 150, y: -150, z: 0}
-  distanceIndex: 03000000000000000200000001000000
-  endScreenPoint: {x: 960, y: 540, z: 0}
+  distanceIndex: 02000000030000000100000000000000
+  endScreenPoint: {x: 1252.188, y: 1029.67, z: 0}
   uiCamera: {fileID: 0}
   render: {fileID: 1975049858}
   graphic: {fileID: 1975049857}
