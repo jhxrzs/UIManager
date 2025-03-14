@@ -110,15 +110,19 @@ Shader "JH/UI/VertexAndUVFlow"
                 half2 offset = normalize(originalUV - _EndPointUV.xy);
 
                 //进行偏移
-                i.uv += offset * _EffectAmount * _TwistIntensity ;
+                i.uv += offset * _EffectAmount * _TwistIntensity;
 
                 // 采样并应用顶点颜色
                 half4 col = tex2D(_MainTex, i.uv) * i.color;
+
+                // 透明度变化
+                col.a = smoothstep(col.a, 0, _EffectAmount);
 
                 //计算alpha值，下面的一堆嵌套等价于：
                 //if (i.uv.x < 0 || i.uv.x > 1 || i.uv.y < 0 || i.uv.y > 1) col.a = 0;
                 half alpha = step(0.0, i.uv.x) * step(0.0, i.uv.y) * step(i.uv.x, 1.0) * step(i.uv.y, 1.0);
                 col.a *= alpha;
+
 
                 return col;
             }

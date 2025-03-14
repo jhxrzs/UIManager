@@ -7,6 +7,7 @@ namespace JH
     /// </summary>
     [RequireComponent(typeof(UIBase))]
     [RequireComponent(typeof(CanvasGroup))]
+    [RequireComponent(typeof(VertexUVFlowController))]
     public class VertexAndUVHide : MonoBehaviour
     {
         /// <summary>  
@@ -25,14 +26,15 @@ namespace JH
         protected virtual float EndEffectAmount => 1;
 
         /// <summary>
-        ///  全部的动效控制组件
+        ///  动效控制组件
         /// </summary>
-        private VertexUVFlow[] VertexUVFlows => GetComponentsInChildren<VertexUVFlow>();
+        [SerializeField, HideInInspector] private VertexUVFlowController vertexUVFlowsController;
 
         private void OnValidate()
         {
             uiBase = GetComponent<UIBase>();
             canvasGroup = GetComponent<CanvasGroup>();
+            vertexUVFlowsController = GetComponent<VertexUVFlowController>();
         }
 
         /// <summary>
@@ -57,10 +59,7 @@ namespace JH
         protected void TweenEffectAmount()
         {
             canvasGroup.interactable = canvasGroup.blocksRaycasts = EndEffectAmount == 0f;
-            foreach (var vertexUVFlow in VertexUVFlows)
-            {
-                vertexUVFlow.EffectAmount = EndEffectAmount;
-            }
+            vertexUVFlowsController.EffectAmount = EndEffectAmount;
         }
     }
 }

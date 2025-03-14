@@ -11,7 +11,7 @@ namespace JH
     /// <summary>
     ///  顶点和UV流动动画管理器
     /// </summary>
-    public partial class VertexUVFlow : MonoBehaviour
+    public class VertexUVFlow : MonoBehaviour
     {
         /// <summary>
         ///  特效进度
@@ -31,12 +31,12 @@ namespace JH
         /// <summary>
         ///  原始顶点位置，模型空间
         /// </summary>
-        [SerializeField] private Vector3[] originVerticesOS;
+        [SerializeField, HideInInspector] private Vector3[] originVerticesOS;
 
         /// <summary>
         ///  根据到消失点距离从小到大的顺序排序的顶点索引
         /// </summary>
-        [SerializeField] private int[] distanceIndex;
+        [SerializeField, HideInInspector] private int[] distanceIndex;
 
         /// <summary>
         ///  消失点屏幕坐标
@@ -46,7 +46,7 @@ namespace JH
         /// <summary>
         ///  消失点屏幕坐标
         /// </summary>
-        private Vector3 EndScreenPoint
+        public Vector3 EndScreenPoint
         {
             get => endScreenPoint;
             set
@@ -54,7 +54,7 @@ namespace JH
                 endScreenPoint = value;
 
                 //消失点一旦调整，必须调整顶点距离排序
-                _ = UpdateDistanceIndex();
+                UpdateDistanceIndex();
             }
         }
 
@@ -64,9 +64,47 @@ namespace JH
         [SerializeField, HideInInspector] private Camera uiCamera;
 
         /// <summary>
+        ///  渲染器
+        /// </summary>
+        [SerializeField, HideInInspector] private CanvasRenderer render;
+
+        /// <summary>
+        ///  图形
+        /// </summary>
+        [SerializeField, HideInInspector] private Graphic graphic;
+
+        /// <summary>
         ///  动画材质
         /// </summary>
-        [SerializeField] private Material material;
+        [SerializeField, HideInInspector] private Material material;
+
+        /// <summary>
+        ///  动画材质
+        /// </summary>
+        public Material materialPrefab;
+
+        /// <summary>
+        /// 用于判定是否需要更新顶点距离索引排序的哈希值
+        /// </summary>
+        private int _originHash;
+
+        /// <summary>
+        ///  动画材质
+        /// </summary>
+        private Material Material
+        {
+            get => material;
+            set
+            {
+                material = value;
+
+                // 更新材质到图形图像上
+                graphic.material = Material;
+
+                //更新材质后，需要重新设置特效进度
+                EffectAmount = effectAmount;
+            }
+        }
 
         /// <summary>
         ///  特效进度
@@ -76,7 +114,7 @@ namespace JH
             get => effectAmount;
             set
             {
-                effectAmount = value;
+                effectAmount = Mathf.Clamp01(value);
 
                 // 更新顶点位置
                 UpdateMeshEffectAmount();
@@ -86,27 +124,87 @@ namespace JH
             }
         }
 
-        /// <summary>
-        ///  编辑器下初始化材质
-        /// </summary>
-        partial void InitMaterialEditor();
+        private void Awake()
+        {
+            //克隆材质，需要保证每个UI面板都有自己的材质，因为参数不同
+            Material = Instantiate(materialPrefab);
+        }
+
+        private void Update()
+        {
+            // 在需要更新时，更新顶点距离索引排序
+            if (NeedUpdateDistanceIndex()) UpdateDistanceIndex();
+        }
+
+
+        private void OnDestroy()
+        {
+            //销毁材质
+            Destroy(Material);
+        }
 
         private void OnValidate()
         {
+            //初始化图像
+            graphic = GetComponent<Graphic>();
+
+            // 初始化渲染器
+            render = GetComponent<CanvasRenderer>();
+
             // 初始化UI相机
             var canvas = GetComponentInParent<Canvas>();
             uiCamera = canvas.renderMode == RenderMode.ScreenSpaceOverlay
                 ? null
                 : canvas.worldCamera;
 
-            // 初始化材质
-            InitMaterialEditor();
+            // 初始化距离索引数组
+            UpdateDistanceIndex();
 
-            //更新顶点距离排序
-            _ = UpdateDistanceIndex();
+            // 如果特效材质为空，实例化一个
+            var otherMaterials = GetComponentInParent<UIBase>().GetComponentsInChildren<Graphic>()
+                .Where(i => i != graphic).Select(i => i.material).ToList();
+            if (Material == null || Material == materialPrefab || otherMaterials.Contains(Material))
+                Material = Instantiate(materialPrefab);
 
             // 编辑器下更新特效进度
             EffectAmount = effectAmount;
+        }
+
+        /// <summary>
+        ///  判定是否需要更新顶点距离索引排序，检测仅发生在特效进度为0的情况下
+        ///  多种情况下检测：
+        ///    1是模型顶点自身改变
+        ///    2是模型世界空间位置改变
+        ///    3是消失点屏幕坐标改变【这个情况在属性<see cref="EndScreenPoint"/>中已处理】
+        /// </summary>
+        private bool NeedUpdateDistanceIndex()
+        {
+            var currentHash = CalcHash();
+            return EffectAmount == 0 && currentHash != _originHash;
+        }
+
+        /// <summary>
+        /// 计算哈希值，用于判定模型顶点自身改变或者模型世界空间位置改变
+        /// </summary>
+        private int CalcHash()
+        {
+            var currentPositionWS = transform.position;
+            var mesh = render.GetMesh();
+            var vertices = mesh.vertices;
+
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 23 + currentPositionWS.GetHashCode();
+
+                // 遍历顶点计算哈希
+                for (int i = 0; i < vertices.Length; i++)
+                {
+                    hash = hash * 23 + vertices[i].GetHashCode();
+                }
+
+                return hash;
+            }
         }
 
         /// <summary>
@@ -114,9 +212,12 @@ namespace JH
         /// </summary>
         private void UpdateMaterialEffectAmount()
         {
-            material.SetFloat(Amount, effectAmount);
-            material.SetVector(EndPointUV, new Vector2(Mathf.Clamp01(EndScreenPoint.x / Screen.width),
-                Mathf.Clamp01(EndScreenPoint.y / Screen.height)));
+            Material.SetFloat(Amount, effectAmount);
+            var nearestIndex = distanceIndex[0];
+            var mesh = render.GetMesh();
+            if (mesh == null) return;
+            var uv = mesh.uv;
+            Material.SetVector(EndPointUV, uv[nearestIndex]);
         }
 
         /// <summary>
@@ -128,7 +229,6 @@ namespace JH
             var newVertices = GenerateNewVerticesOS();
 
             // 克隆mesh
-            var render = GetComponent<CanvasRenderer>();
             var mesh = render.GetMesh();
             if (mesh == null) return;
             var newMesh = new Mesh
@@ -189,33 +289,31 @@ namespace JH
         /// <summary>
         ///  更新原始顶点
         /// </summary>
-        public async JTask UpdateOriginVertices()
+        public void UpdateOriginVertices()
         {
             //关闭graphic 
-            var graphic = GetComponent<Graphic>();
             if (graphic != null) graphic.enabled = false;
 
             //打开graphic，此时会刷新mesh
             if (graphic != null) graphic.enabled = true;
-
-            await JTask.Yield();
-            await JTask.SwitchToMainThread();
-
+#if UNITY_EDITOR
+            // 强制更新布局
+            Canvas.ForceUpdateCanvases();
+#endif
             // 记录原始Mesh信息
-            var render = GetComponent<CanvasRenderer>();
             var mesh = render.GetMesh();
             if (mesh == null) Debug.LogError("未找到Mesh组件", gameObject);
             if (mesh != null) originVerticesOS = Array.ConvertAll(mesh.vertices, v => v);
         }
 
-#if ODIN_INSPECTOR
-        [Button("初始化距离数组")]
-#endif
-        [ContextMenu("初始化距离数组")]
-        private async JTask UpdateDistanceIndex()
+
+        /// <summary>
+        ///  更新顶点距离排序
+        /// </summary>
+        private void UpdateDistanceIndex()
         {
             // 更新原始顶点
-            await UpdateOriginVertices();
+            UpdateOriginVertices();
 
             // 如果没有原始顶点，直接返回
             if (originVerticesOS == null || originVerticesOS.Length == 0) return;

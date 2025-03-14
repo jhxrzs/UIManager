@@ -31,7 +31,7 @@ Material:
     m_Floats:
     - _ColorMask: 15
     - _EDGE_SMOOTH: 0
-    - _EffectAmount: 1
+    - _EffectAmount: 0
     - _SinAmplitude: 0.123
     - _SinFrequency: 16.2
     - _Stencil: 0
@@ -42,7 +42,7 @@ Material:
     - _TwistIntensity: 1.6
     - _ZOOM: 0
     m_Colors:
-    - _EndPointUV: {r: 1, g: 1, b: 0, a: 0}
+    - _EndPointUV: {r: 0, g: 1, b: 0, a: 0}
     - _EndScreenPoint: {r: 0, g: 0, b: 0, a: 0}
     - _UVOffset: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []

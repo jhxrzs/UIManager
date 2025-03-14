@@ -8,6 +8,7 @@ namespace JH
     /// </summary>
     [RequireComponent(typeof(UIBase))]
     [RequireComponent(typeof(CanvasGroup))]
+    [RequireComponent(typeof(VertexUVFlowController))]
     public class VertexAndUVFlowHide : MonoBehaviour
     {
         /// <summary>  
@@ -26,19 +27,15 @@ namespace JH
         [SerializeField] protected Ease tweenEase = Ease.OutExpo;
 
         /// <summary>
-        ///  全部的动效控制组件
+        ///  动效控制组件
         /// </summary>
-        private VertexUVFlow[] VertexUVFlows => GetComponentsInChildren<VertexUVFlow>();
+        [SerializeField, HideInInspector] private VertexUVFlowController vertexUVFlowsController;
 
         /// <summary>
         ///  canvasGroup，来避免在隐藏时，点击事件穿透
         /// </summary>
         [SerializeField, HideInInspector] private CanvasGroup canvasGroup;
 
-        /// <summary>
-        ///  开始值
-        /// </summary>
-        protected virtual float StartEffectAmount => 0;
 
         /// <summary>
         ///  目标值
@@ -49,6 +46,7 @@ namespace JH
         {
             uiBase = GetComponent<UIBase>();
             canvasGroup = GetComponent<CanvasGroup>();
+            vertexUVFlowsController = GetComponent<VertexUVFlowController>();
         }
 
         /// <summary>
@@ -73,13 +71,9 @@ namespace JH
         protected async JTask TweenEffectAmountAsync(CancellationToken token)
         {
             canvasGroup.interactable = canvasGroup.blocksRaycasts = EndEffectAmount == 0f;
-            await JTween.Tween(StartEffectAmount, EndEffectAmount, value =>
-            {
-                foreach (var vertexUVFlow in VertexUVFlows)
-                {
-                    vertexUVFlow.EffectAmount = value;
-                }
-            }, duration, token, tweenEase);
+            vertexUVFlowsController.Duration = duration;
+            await JTween.Tween(vertexUVFlowsController.EffectAmount, EndEffectAmount,
+                value => { vertexUVFlowsController.EffectAmount = value; }, duration, token, tweenEase);
         }
     }
 }
