@@ -288,7 +288,7 @@ namespace JH
                 var vertexOS = GetEndPointOS();
 
                 // 如果是TMP，多乘一个因子
-                var tmpFactor = FancySurface(i,EffectAmount,originVerticesOS.Length-1);
+                var tmpFactor = FancySurface(i, EffectAmount, originVerticesOS.Length - 1);
                 var factor = IsTMP ? tmpFactor : 1;
 
                 //根据当前特效进度，计算新的顶点位置
@@ -298,6 +298,7 @@ namespace JH
 
             return newVertices;
         }
+
         /// <summary>
         ///  生成TMP特效因子
         /// </summary>
@@ -305,27 +306,27 @@ namespace JH
         {
             // 涟漪效果
             float ripple = Mathf.Sin(Mathf.Sqrt((a * a + b * b) * 10)) * 0.2f;
-        
+
             // 螺旋波
-            float spiral = Mathf.Sin(a * b * Mathf.PI * 2 + 
+            float spiral = Mathf.Sin(a * b * Mathf.PI * 2 +
                                      Mathf.Atan2(b, a) * 3) * 0.25f;
-        
+
             // 边界混合
-            float edgeBlend = (1 - b) * (1 - a/n);
-        
+            float edgeBlend = (1 - b) * (1 - a / n);
+
             // 指数衰减
-            float decay = Mathf.Exp(-(a * a/(n * n) + b * b));
-        
+            float decay = Mathf.Exp(-(a * a / (n * n) + b * b));
+
             // 确保边界条件
             float boundaryControl = Mathf.Lerp(
-                1,  // 起始值
-                1 + (ripple + spiral) * decay,  // 中间变化
-                edgeBlend  // 混合因子
+                1, // 起始值
+                1 + (ripple + spiral) * decay, // 中间变化
+                edgeBlend // 混合因子
             );
-        
+
             return boundaryControl;
         }
-        
+
         /// <summary>
         ///  获取消失点在模型空间的位置
         /// </summary>
