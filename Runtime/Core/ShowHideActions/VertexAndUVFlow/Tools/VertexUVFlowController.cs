@@ -1,24 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Sirenix.OdinInspector;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace JH
 {
     /// <summary>
     ///  针对UI面板下所有的VertexUVFlow脚本的控制器
     /// </summary>
-    public partial class VertexUVFlowController : MonoBehaviour
+    public partial class VertexUVFlowController : EffectControllerBase
     {
-        /// <summary>
-        ///  特效进度
-        /// </summary>
-        [SerializeField, Range(0, 1f)] private float effectAmount;
-
         /// <summary>
         ///  消失点屏幕坐标
         /// </summary>
@@ -42,12 +37,18 @@ namespace JH
         /// <summary>
         ///  当排序模式为角度模式时，在屏幕空间和这个向量求角度
         /// </summary>
-        [SerializeField] private Vector2 screenOriginVector = Vector2.right;
+        [SerializeField]
+        [Tooltip("如果排序方式为角度模式，那么这个向量将作为屏幕空间的原点向量，所有的元素将按照与这个向量的角度进行排序")]
+#if ODIN_INSPECTOR
+        [EnableIf("sortMode", SortMode.Angle)]
+#endif
+        private Vector2 screenOriginVector = Vector2.right;
 
         /// <summary>
         ///  两个效果之间的延时
         /// </summary>
-        [SerializeField] private float delayBetween = 0.1f;
+        [SerializeField] [Tooltip("两个元素动效之间的延时")]
+        private float delayBetween = 0.1f;
 
         /// <summary>
         ///  消失点屏幕坐标
@@ -71,44 +72,6 @@ namespace JH
         /// </summary>
         public float Duration { get; set; } = 0.5f;
 
-        /// <summary>
-        ///   特效进度
-        /// </summary>
-        public float EffectAmount
-        {
-            get => effectAmount;
-            set
-            {
-                effectAmount = value;
-
-                // 排序
-                var sortedVertexUVFlows = SortVertexUVFlows();
-                if (sortInverse) sortedVertexUVFlows.Reverse();
-
-                // 总元素个数
-                var count = sortedVertexUVFlows.Count;
-
-                //计算总用时 = 最后一个元素的延时 + 动效用时
-                var totalDuration = (count - 1) * delayBetween + Duration;
-
-                // 计算当前时长
-                var currentDuration = effectAmount * totalDuration;
-
-                for (var index = 0; index < sortedVertexUVFlows.Count; index++)
-                {
-                    var vertexUVFlow = sortedVertexUVFlows[index];
-                    var delay = index * delayBetween;
-                    if (currentDuration <= delay)
-                    {
-                        vertexUVFlow.EffectAmount = 0;
-                        continue;
-                    }
-
-                    var duration = currentDuration - delay;
-                    vertexUVFlow.EffectAmount = duration / Duration;
-                }
-            }
-        }
 
         /// <summary>
         /// 特效材质预制体
@@ -125,8 +88,9 @@ namespace JH
         /// </summary>
         private VertexUVFlow[] TotalVertexUVFlows => GetComponentsInChildren<VertexUVFlow>();
 
-        private void Awake()
+        protected override void Awake()
         {
+            base.Awake();
             SetMaterialPrefab();
         }
 
@@ -143,6 +107,40 @@ namespace JH
             };
 
             return TotalVertexUVFlows.OrderBy(vertexUVFlow => vertexUVFlow, comparer).ToList();
+        }
+
+        /// <summary>
+        ///  当特效值改变时
+        /// </summary>
+        protected override void OnEffectAmountChanged(float value)
+        {
+            base.OnEffectAmountChanged(value);
+            // 排序
+            var sortedVertexUVFlows = SortVertexUVFlows();
+            if (sortInverse) sortedVertexUVFlows.Reverse();
+
+            // 总元素个数
+            var count = sortedVertexUVFlows.Count;
+
+            //计算总用时 = 最后一个元素的延时 + 动效用时
+            var totalDuration = (count - 1) * delayBetween + Duration;
+
+            // 计算当前时长
+            var currentDuration = effectAmount * totalDuration;
+
+            for (var index = 0; index < sortedVertexUVFlows.Count; index++)
+            {
+                var vertexUVFlow = sortedVertexUVFlows[index];
+                var delay = index * delayBetween;
+                if (currentDuration <= delay)
+                {
+                    vertexUVFlow.EffectAmount = 0;
+                    continue;
+                }
+
+                var duration = currentDuration - delay;
+                vertexUVFlow.EffectAmount = duration / Duration;
+            }
         }
 
         /// <summary>
@@ -171,7 +169,7 @@ namespace JH
             }
         }
 
-        private void OnValidate()
+        protected override void OnValidate()
         {
             // 初始化UI相机
             var canvas = GetComponentInParent<Canvas>();
@@ -182,7 +180,8 @@ namespace JH
             FindShaderByNameOnValidate();
             SetMaterialPrefab();
             EndScreenPoint = endScreenPoint;
-            EffectAmount = effectAmount;
+
+            base.OnValidate();
         }
     }
 }

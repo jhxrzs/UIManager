@@ -25,22 +25,24 @@ namespace JH
         /// <summary>
         ///  最大的兄弟节点索引
         /// </summary>
-        [SerializeField, HideInInspector] private int maxSiblingIndex;
+        private int MaxSiblingIndex=> Mathf.Max(Siblings
+            .Where(i => !i.fixedSiblingIndex)
+            .Max(i => i.transform.GetSiblingIndex()), transform.GetSiblingIndex());
 
         /// <summary>
         ///  UI面板的父面板集合,从祖先到父亲
         /// </summary>
-        [SerializeField, HideInInspector] private List<UIBase> parents;
+        private List<UIBase> Parents=> FindParents();
 
         /// <summary>
         ///  UI面板的子面板集合
         /// </summary>
-        [SerializeField, HideInInspector] private List<UIBase> children;
+       private List<UIBase> Children=> FindChildren();
 
         /// <summary>
         ///  所有兄弟节点面板
         /// </summary>
-        [SerializeField, HideInInspector] private List<UIBase> siblings;
+         private List<UIBase> Siblings=> FindSiblings();
 
         /// <summary>
         ///  UI显示前触发
@@ -328,7 +330,7 @@ namespace JH
             StopCurrentShowHideActions();
 
             // 隐藏子节点
-            foreach (var eachChild in children)
+            foreach (var eachChild in Children)
             {
                 eachChild.Hide();
             }
@@ -364,7 +366,7 @@ namespace JH
             BeforeUIShowEvent?.Invoke();
 
             //隐藏互斥兄弟节点中，显示的面板
-            foreach (var eachMutexSibling in siblings)
+            foreach (var eachMutexSibling in Siblings)
             {
                 //如果不在同一个互斥组，则直接忽略
                 if (eachMutexSibling.mutexGroup != mutexGroup) continue;
@@ -374,7 +376,7 @@ namespace JH
             }
 
             //显示父节点中，隐藏的节点
-            foreach (var eachParent in parents)
+            foreach (var eachParent in Parents)
             {
                 //显示父节点
                 eachParent.Show();
@@ -393,11 +395,11 @@ namespace JH
             BeforeUIShowEvent?.Invoke();
 
             //隐藏互斥兄弟节点中，显示的面板
-            var taskList = siblings.Where(i => i.mutexGroup == mutexGroup)
+            var taskList = Siblings.Where(i => i.mutexGroup == mutexGroup)
                 .Select(t => t.HideAsync(cancellationToken)).ToList();
 
             //显示父节点中，隐藏的节点
-            taskList.AddRange(parents.Select(eachParent
+            taskList.AddRange(Parents.Select(eachParent
                 => eachParent.ShowAsync(cancellationToken)));
 
             //等待所有任务完成
@@ -413,9 +415,9 @@ namespace JH
             State = UIState.Showed;
 
             //调整transform的层级，让自己处于层级视图最下端，避免被遮挡,固定层级的节点不参与调整
-            var flexibleSiblings = siblings.Where(i => !i.fixedSiblingIndex).ToList();
+            var flexibleSiblings = Siblings.Where(i => !i.fixedSiblingIndex).ToList();
             if (flexibleSiblings.Count > 0 && !fixedSiblingIndex)
-                transform.SetSiblingIndex(maxSiblingIndex);
+                transform.SetSiblingIndex(MaxSiblingIndex);
 
             //触发事件
             AfterUIShowedEvent?.Invoke();
@@ -449,35 +451,89 @@ namespace JH
             }
         }
 
-        protected virtual void OnValidate()
-        {
-            // 寻找所有的父面板，从祖先到父亲
-            FindParents();
-
-            // 寻找所有的子面板
-            FindChildren();
-
-            // 找所有的互斥组相同的兄弟面板
-            FindSiblings();
-        }
-
-        #region 编辑器声明函数
-
         /// <summary>
         ///  寻找所有的父面板，从祖先到父亲
         /// </summary>
-        partial void FindParents();
+        private List<UIBase> FindParents()
+        {
+            //循环找到所有的父面板
+            var parents = new List<UIBase>();
+            var current = transform.parent;
+            while (current != null)
+            {
+                var uiBase = current.GetComponent<UIBase>();
+                if (uiBase != null)
+                {
+                    parents.Add(uiBase);
+                }
+                else
+                {
+                    break;
+                }
 
-        /// <summary>
-        ///  寻找所有的子面板
-        /// </summary>
-        partial void FindChildren();
+                current = current.parent;
+            }
+
+            //反转父面板集合，从祖先到父亲
+            parents.Reverse();
+
+            return parents;
+        }
 
         /// <summary>
         ///  寻找所有的兄弟面板，和最大的兄弟节点索引
         /// </summary>
-        partial void FindSiblings();
+        private List<UIBase> FindSiblings()
+        {
+            //尝试找到父节点
+            var parent = transform.parent;
 
-        #endregion
+            //所有的兄弟节点
+            var siblings = new List<UIBase>();
+
+            //如果没有父节点，那么就是根节点，那么就找到所有的根节点,并且排除自己
+            if (parent == null)
+            {
+                var scene = gameObject.scene;
+                if (!scene.isLoaded) return new List<UIBase>();
+
+                // 获取所有的兄弟节点,并且排除自己和未激活的节点
+                siblings = scene.GetRootGameObjects()
+                    .Select(i => i.GetComponent<UIBase>())
+                    .Where(i => i != null && i != this && i.gameObject.activeInHierarchy).ToList();
+                
+                return siblings;
+            }
+
+            //如果有父面板，那么就找到所有的子面板，并且排除自己
+            for (int i = 0; i < transform.parent.childCount; i++)
+            {
+                var child = transform.parent.GetChild(i);
+
+                //过滤掉未激活的节点
+                if (!child.gameObject.activeInHierarchy) continue;
+
+                if (child != transform)
+                {
+                    var uiBase = child.GetComponent<UIBase>();
+                    if (uiBase != null)
+                    {
+                        siblings.Add(uiBase);
+                    }
+                }
+            }
+            
+            return siblings;
+        }
+
+        /// <summary>
+        /// 初始化UI面板的子面板集合
+        /// </summary>
+        private List<UIBase> FindChildren()
+        {
+           return GetComponentsInChildren<UIBase>()
+                .Where(i => i.transform.parent == transform)
+                .Where(i => i != null && i.gameObject.activeInHierarchy).ToList();
+        }
     }
 }

@@ -77,7 +77,7 @@ namespace JH
         ///  动画材质
         /// </summary>
         [SerializeField, HideInInspector] private Material material;
-
+        
         /// <summary>
         ///  动画材质
         /// </summary>
@@ -283,6 +283,7 @@ namespace JH
         {
             RectTransformUtility.ScreenPointToWorldPointInRectangle(
                 transform as RectTransform, EndScreenPoint, uiCamera, out var vertexWS);
+            
             return transform.InverseTransformPoint(vertexWS);
         }
 
