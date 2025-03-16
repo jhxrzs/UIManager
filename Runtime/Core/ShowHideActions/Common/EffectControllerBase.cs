@@ -1,5 +1,6 @@
 ﻿using System.Threading;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace JH
 {
@@ -48,7 +49,8 @@ namespace JH
         /// <summary>
         ///  隐藏时不允许交互
         /// </summary>
-        [SerializeField, Tooltip("隐藏时不再阻挡射线")] protected bool hideBlockRaycast = true;
+        [SerializeField, Tooltip("隐藏时不再阻挡射线,无法交互")]
+        protected bool dontBlockRaycastOnHide = true;
 
         /// <summary>
         ///  CanvasGroup组件,用来控制UI面板的透明度
@@ -72,7 +74,7 @@ namespace JH
                 effectAmount = Mathf.Clamp01(value);
                 OnEffectAmountChanged(effectAmount);
                 // 只要不是完全显示，就不允许点击
-                if (hideBlockRaycast) CanvasGroup.blocksRaycasts = effectAmount == 0f;
+                if (dontBlockRaycastOnHide) CanvasGroup.blocksRaycasts = effectAmount == 0f;
             }
         }
 

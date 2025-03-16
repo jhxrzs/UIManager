@@ -77,7 +77,17 @@ namespace JH
         ///  动画材质
         /// </summary>
         [SerializeField, HideInInspector] private Material material;
-        
+
+        /// <summary>
+        ///  文本组件
+        /// </summary>
+        private TMPro.TMP_Text TextTMP => GetComponent<TMPro.TMP_Text>();
+
+        /// <summary>
+        ///  是否是TMP组件
+        /// </summary>
+        private bool IsTMP => TextTMP != null;
+
         /// <summary>
         ///  动画材质
         /// </summary>
@@ -246,6 +256,9 @@ namespace JH
 
             // 更新mesh
             render.SetMesh(newMesh);
+
+            // 当动效为0且是TMP_Text组件时，需要刷新TMP_Text组件
+            if (effectAmount == 0 && IsTMP) TextTMP.ForceMeshUpdate();
         }
 
         /// <summary>
@@ -256,11 +269,16 @@ namespace JH
             var newVertices = new Vector3[originVerticesOS.Length];
             for (var i = 0; i < originVerticesOS.Length; i++)
             {
-                // 除了距离最近的顶点，其他顶点位置不变
-                if (i != distanceIndex[0])
+                // 如果是TMP_Text组件，则所有顶点都需要偏移，因为TMP没有自定义材质，只能通过顶点偏移来实现动效
+                // 否则只偏移距离最近的顶点
+                if (!IsTMP)
                 {
-                    newVertices[i] = originVerticesOS[i];
-                    continue;
+                    // 除了距离最近的顶点，其他顶点位置不变
+                    if (i != distanceIndex[0])
+                    {
+                        newVertices[i] = originVerticesOS[i];
+                        continue;
+                    }
                 }
 
                 // 获取原始顶点位置
@@ -269,13 +287,45 @@ namespace JH
                 // 获取目标顶点位置
                 var vertexOS = GetEndPointOS();
 
+                // 如果是TMP，多乘一个因子
+                var tmpFactor = FancySurface(i,EffectAmount,originVerticesOS.Length-1);
+                var factor = IsTMP ? tmpFactor : 1;
+
                 //根据当前特效进度，计算新的顶点位置
-                newVertices[i] = EaseFunctionNumeric.Tween(originVertexOS, vertexOS, Ease.InOutCirc, effectAmount);
+                newVertices[i] =
+                    EaseFunctionNumeric.Tween(originVertexOS, vertexOS, Ease.InOutCirc, EffectAmount * factor);
             }
 
             return newVertices;
         }
-
+        /// <summary>
+        ///  生成TMP特效因子
+        /// </summary>
+        private float FancySurface(float a, float b, float n)
+        {
+            // 涟漪效果
+            float ripple = Mathf.Sin(Mathf.Sqrt((a * a + b * b) * 10)) * 0.2f;
+        
+            // 螺旋波
+            float spiral = Mathf.Sin(a * b * Mathf.PI * 2 + 
+                                     Mathf.Atan2(b, a) * 3) * 0.25f;
+        
+            // 边界混合
+            float edgeBlend = (1 - b) * (1 - a/n);
+        
+            // 指数衰减
+            float decay = Mathf.Exp(-(a * a/(n * n) + b * b));
+        
+            // 确保边界条件
+            float boundaryControl = Mathf.Lerp(
+                1,  // 起始值
+                1 + (ripple + spiral) * decay,  // 中间变化
+                edgeBlend  // 混合因子
+            );
+        
+            return boundaryControl;
+        }
+        
         /// <summary>
         ///  获取消失点在模型空间的位置
         /// </summary>
@@ -283,7 +333,7 @@ namespace JH
         {
             RectTransformUtility.ScreenPointToWorldPointInRectangle(
                 transform as RectTransform, EndScreenPoint, uiCamera, out var vertexWS);
-            
+
             return transform.InverseTransformPoint(vertexWS);
         }
 

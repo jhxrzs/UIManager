@@ -11,6 +11,7 @@ UIManager是一款简易的用来管理UI界面显示隐藏的管理插件。
   "dependencies": {
     "com.jh.jtask": "https://gitee.com/wmzjzxyh/jtask.git",
     "com.jh.jtween": "https://gitee.com/wmzjzxyh/jtween.git",
+    "com.unity.ugui": "2.0.0",
     "com.jh.uimanager": "https://gitee.com/wmzjzxyh/uimanager.git"
   }
 }
