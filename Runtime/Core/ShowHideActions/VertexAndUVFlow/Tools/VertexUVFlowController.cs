@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+#if ODIN_INSPECTOR
 using Sirenix.OdinInspector;
+#endif
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -37,8 +39,7 @@ namespace JH
         /// <summary>
         ///  当排序模式为角度模式时，在屏幕空间和这个向量求角度
         /// </summary>
-        [SerializeField]
-        [Tooltip("如果排序方式为角度模式，那么这个向量将作为屏幕空间的原点向量，所有的元素将按照与这个向量的角度进行排序")]
+        [SerializeField] [Tooltip("如果排序方式为角度模式，那么这个向量将作为屏幕空间的原点向量，所有的元素将按照与这个向量的角度进行排序")]
 #if ODIN_INSPECTOR
         [EnableIf("sortMode", SortMode.Angle)]
 #endif

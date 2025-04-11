@@ -18,8 +18,7 @@ namespace JH
 #if ODIN_INSPECTOR
         [FoldoutGroup("显示")]
 #endif
-        [SerializeField]
-        private EffectSerializedRectTransform showTarget;
+        [SerializeField] private EffectSerializedRectTransform showTarget;
 
         /// <summary>
         ///  位置动画曲线
@@ -29,8 +28,7 @@ namespace JH
         [Tooltip("当showEase不是未设置状态时，此字段无效")]
         [EnableIf("showEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease showAnchorPosEase = Ease.Linear;
+        [SerializeField] protected Ease showAnchorPosEase = Ease.Linear;
 
         /// <summary>
         ///  旋转动画曲线
@@ -40,8 +38,7 @@ namespace JH
         [Tooltip("当showEase不是未设置状态时，此字段无效")]
         [EnableIf("showEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease showAngleEase = Ease.Linear;
+        [SerializeField] protected Ease showAngleEase = Ease.Linear;
 
         /// <summary>
         ///  缩放动画曲线
@@ -51,8 +48,7 @@ namespace JH
         [Tooltip("当showEase不是未设置状态时，此字段无效")]
         [EnableIf("showEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease showScaleEase = Ease.Linear;
+        [SerializeField] protected Ease showScaleEase = Ease.Linear;
 
         /// <summary>
         ///  大小动画曲线
@@ -62,8 +58,7 @@ namespace JH
         [Tooltip("当showEase不是未设置状态时，此字段无效")]
         [EnableIf("showEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease showSizeDeltaEase = Ease.Linear;
+        [SerializeField] protected Ease showSizeDeltaEase = Ease.Linear;
 
         /// <summary>
         ///   轴心动画曲线
@@ -73,8 +68,7 @@ namespace JH
         [Tooltip("当showEase不是未设置状态时，此字段无效")]
         [EnableIf("showEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease showPivotEase = Ease.Linear;
+        [SerializeField] protected Ease showPivotEase = Ease.Linear;
 
 #if ODIN_INSPECTOR
         [Button("记录显示位置")]
@@ -95,8 +89,7 @@ namespace JH
 #if ODIN_INSPECTOR
         [FoldoutGroup("隐藏")]
 #endif
-        [SerializeField]
-        private EffectSerializedRectTransform hideTarget;
+        [SerializeField] private EffectSerializedRectTransform hideTarget;
 
         /// <summary>
         ///  位置动画曲线
@@ -106,8 +99,7 @@ namespace JH
         [Tooltip("当hideEase不是未设置状态时，此字段无效")]
         [EnableIf("hideEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease hideAnchorPosEase = Ease.Linear;
+        [SerializeField] protected Ease hideAnchorPosEase = Ease.Linear;
 
         /// <summary>
         ///  旋转动画曲线
@@ -117,8 +109,7 @@ namespace JH
         [Tooltip("当hideEase不是未设置状态时，此字段无效")]
         [EnableIf("hideEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease hideAngleEase = Ease.Linear;
+        [SerializeField] protected Ease hideAngleEase = Ease.Linear;
 
         /// <summary>
         ///  缩放动画曲线
@@ -128,8 +119,7 @@ namespace JH
         [Tooltip("当hideEase不是未设置状态时，此字段无效")]
         [EnableIf("hideEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease hideScaleEase = Ease.Linear;
+        [SerializeField] protected Ease hideScaleEase = Ease.Linear;
 
         /// <summary>
         ///  大小动画曲线
@@ -139,8 +129,7 @@ namespace JH
         [Tooltip("当hideEase不是未设置状态时，此字段无效")]
         [EnableIf("hideEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease hideSizeDeltaEase = Ease.Linear;
+        [SerializeField] protected Ease hideSizeDeltaEase = Ease.Linear;
 
         /// <summary>
         ///   轴心动画曲线
@@ -150,8 +139,7 @@ namespace JH
         [Tooltip("当hideEase不是未设置状态时，此字段无效")]
         [EnableIf("hideEase", Ease.NotSet)]
 #endif
-        [SerializeField]
-        protected Ease hidePivotEase = Ease.Linear;
+        [SerializeField] protected Ease hidePivotEase = Ease.Linear;
 
 #if ODIN_INSPECTOR
         [Button("记录隐藏位置")]

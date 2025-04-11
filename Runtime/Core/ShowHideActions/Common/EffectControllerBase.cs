@@ -1,6 +1,5 @@
 ﻿using System.Threading;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace JH
 {
@@ -73,6 +72,7 @@ namespace JH
             {
                 effectAmount = Mathf.Clamp01(value);
                 OnEffectAmountChanged(effectAmount);
+                
                 // 只要不是完全显示，就不允许点击
                 if (dontBlockRaycastOnHide) CanvasGroup.blocksRaycasts = effectAmount == 0f;
             }
