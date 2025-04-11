@@ -5,6 +5,7 @@ using Sirenix.OdinInspector;
 #endif
 using UnityEngine;
 using UnityEngine.UI;
+using Random = UnityEngine.Random;
 
 namespace JH
 {
@@ -189,31 +190,42 @@ namespace JH
         /// </summary>
         private bool NeedUpdateDistanceIndex()
         {
-            var currentHash = CalcHash();
-            return EffectAmount == 0 && currentHash != _originHash;
+            //如果获取mesh为空，可能是因为canvas还没有更新
+            var mesh = render.GetMesh();
+            if (mesh == null)
+            {
+                // 强制更新
+                Canvas.ForceUpdateCanvases();
+
+                //再次获取mesh
+                mesh = render.GetMesh();
+
+                // 如果还是为空，直接返回不需要更新
+                if (mesh == null) return false;
+            }
+
+            var currentHash = CalcHash(mesh);
+            var ret = EffectAmount == 0 && currentHash != _originHash;
+            // 更新哈希值
+            if (ret) _originHash = currentHash;
+            return ret;
         }
 
         /// <summary>
         /// 计算哈希值，用于判定模型顶点自身改变或者模型世界空间位置改变
         /// </summary>
-        private int CalcHash()
+        private int CalcHash(Mesh mesh)
         {
-            var currentPositionWS = transform.position;
-            var mesh = render.GetMesh();
+            var currentPositionWs = transform.position;
             var vertices = mesh.vertices;
 
             unchecked
             {
                 int hash = 17;
-                hash = hash * 23 + currentPositionWS.GetHashCode();
+                hash = hash * 23 + currentPositionWs.GetHashCode();
 
                 // 遍历顶点计算哈希
-                for (int i = 0; i < vertices.Length; i++)
-                {
-                    hash = hash * 23 + vertices[i].GetHashCode();
-                }
-
-                return hash;
+                return vertices.Aggregate(hash, (current, t) => current * 23 + t.GetHashCode());
             }
         }
 
@@ -333,9 +345,9 @@ namespace JH
         private Vector3 GetEndPointOS()
         {
             RectTransformUtility.ScreenPointToWorldPointInRectangle(
-                transform as RectTransform, EndScreenPoint, uiCamera, out var vertexWS);
+                transform as RectTransform, EndScreenPoint, uiCamera, out var vertexWs);
 
-            return transform.InverseTransformPoint(vertexWS);
+            return transform.InverseTransformPoint(vertexWs);
         }
 
         /// <summary>
@@ -348,17 +360,20 @@ namespace JH
 
             //打开graphic，此时会刷新mesh
             if (graphic != null) graphic.enabled = true;
-#if UNITY_EDITOR
+
             // 强制更新布局
             Canvas.ForceUpdateCanvases();
-#endif
+
             // 记录原始Mesh信息
             var mesh = render.GetMesh();
-            if (mesh == null) Debug.LogError("未找到Mesh组件", gameObject);
-            if (mesh != null) originVerticesOS = Array.ConvertAll(mesh.vertices, v => v);
+            
+            // 如果获取不到mesh，直接返回
+            if (mesh == null) return;
+            
+            // 获取原始顶点
+            originVerticesOS = Array.ConvertAll(mesh.vertices, v => v);
         }
-
-
+        
         /// <summary>
         ///  更新顶点距离排序
         /// </summary>
