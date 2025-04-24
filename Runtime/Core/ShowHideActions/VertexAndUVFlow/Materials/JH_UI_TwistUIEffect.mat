@@ -41,6 +41,7 @@ Material:
     - _StencilWriteMask: 255
     - _TwistIntensity: 1.6
     - _ZOOM: 0
+    - unity_GUIZTestMode: 4
     m_Colors:
     - _EndPointUV: {r: 0, g: 1, b: 0, a: 0}
     - _EndScreenPoint: {r: 0, g: 0, b: 0, a: 0}

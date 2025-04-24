@@ -16,12 +16,21 @@ Shader "JH/UI/VertexAndUVFlow"
         [HideInInspector] _StencilWriteMask ("Stencil Write Mask", Float) = 255
         [HideInInspector] _StencilReadMask ("Stencil Read Mask", Float) = 255
         [HideInInspector] _ColorMask ("Color Mask", Float) = 15
+        //0: Always 1: Never 2: Less 3: Equal 4: LEqual  5: Greater  6: NotEqual  7: GEqual
+        [HideInInspector] unity_GUIZTestMode ("ZTest Mode", Float) = 4
+
     }
     SubShader
     {
+        //Queue	Transparent	控制渲染顺序，透明对象应在不透明对象之后渲染
+        //RenderType	Transparent	标识shader渲染类型，用于shader替换等功能
+        //IgnoreProjector	True	UI元素通常不需要接收投影
+        //PreviewType	Plane	在编辑器中以平面预览（适合UI）
+        //CanUseSpriteAtlas	True	允许在Sprite Atlas中使用（UI常用）
+        //DisableBatching	False/True	根据需要设置是否禁用批处理
         Tags
         {
-            "RenderType"="Transparent"
+            "Queue" = "Transparent"
             "IgnoreProjector"="True"
             "RenderType"="Transparent"
             "PreviewType"="Plane"
@@ -122,7 +131,6 @@ Shader "JH/UI/VertexAndUVFlow"
                 //if (i.uv.x < 0 || i.uv.x > 1 || i.uv.y < 0 || i.uv.y > 1) col.a = 0;
                 float alpha = step(0.0, i.uv.x) * step(0.0, i.uv.y) * step(i.uv.x, 1.0) * step(i.uv.y, 1.0);
                 col.a *= alpha;
-
 
                 return col;
             }

@@ -5,7 +5,6 @@ using Sirenix.OdinInspector;
 #endif
 using UnityEngine;
 using UnityEngine.UI;
-using Random = UnityEngine.Random;
 
 namespace JH
 {
@@ -104,7 +103,7 @@ namespace JH
         /// </summary>
         private Material Material
         {
-            get => material;
+            get => material ??= graphic.material;
             set
             {
                 material = value;
@@ -156,6 +155,9 @@ namespace JH
 
         private void OnValidate()
         {
+            // 任意改动都先将材质设置为null
+            material = null;
+
             //初始化图像
             graphic = GetComponent<Graphic>();
 
@@ -174,7 +176,8 @@ namespace JH
             // 如果特效材质为空，实例化一个
             var otherMaterials = GetComponentInParent<UIBase>().GetComponentsInChildren<Graphic>()
                 .Where(i => i != graphic).Select(i => i.material).ToList();
-            if (Material == null || Material == materialPrefab || otherMaterials.Contains(Material))
+            if (Material == null || Material.name == "Default UI Material"
+                                 || Material == materialPrefab || otherMaterials.Contains(Material))
                 Material = Instantiate(materialPrefab);
 
             // 编辑器下更新特效进度
@@ -366,14 +369,14 @@ namespace JH
 
             // 记录原始Mesh信息
             var mesh = render.GetMesh();
-            
+
             // 如果获取不到mesh，直接返回
             if (mesh == null) return;
-            
+
             // 获取原始顶点
             originVerticesOS = Array.ConvertAll(mesh.vertices, v => v);
         }
-        
+
         /// <summary>
         ///  更新顶点距离排序
         /// </summary>
