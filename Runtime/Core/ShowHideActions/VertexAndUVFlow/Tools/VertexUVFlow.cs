@@ -359,10 +359,10 @@ namespace JH
         public void UpdateOriginVertices()
         {
             //关闭graphic 
-            if (graphic != null) graphic.enabled = false;
+            if (graphic) graphic.enabled = false;
 
             //打开graphic，此时会刷新mesh
-            if (graphic != null) graphic.enabled = true;
+            if (graphic) graphic.enabled = true;
 
             // 强制更新布局
             Canvas.ForceUpdateCanvases();
