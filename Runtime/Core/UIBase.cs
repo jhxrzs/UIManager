@@ -23,26 +23,32 @@ namespace JH
         [SerializeField, Tooltip("固定UI层级")] private bool fixedSiblingIndex;
 
         /// <summary>
+        ///  当UI状态改变时触发
+        ///  参数： 原始状态，新状态
+        /// </summary>
+        public event Action<UIState, UIState> OnStateChanged;
+
+        /// <summary>
         ///  最大的兄弟节点索引
         /// </summary>
-        private int MaxSiblingIndex=> Mathf.Max(Siblings
+        private int MaxSiblingIndex => Mathf.Max(Siblings
             .Where(i => !i.fixedSiblingIndex)
             .Max(i => i.transform.GetSiblingIndex()), transform.GetSiblingIndex());
 
         /// <summary>
         ///  UI面板的父面板集合,从祖先到父亲
         /// </summary>
-        private List<UIBase> Parents=> FindParents();
+        private List<UIBase> Parents => FindParents();
 
         /// <summary>
         ///  UI面板的子面板集合
         /// </summary>
-       private List<UIBase> Children=> FindChildren();
+        private List<UIBase> Children => FindChildren();
 
         /// <summary>
         ///  所有兄弟节点面板
         /// </summary>
-         private List<UIBase> Siblings=> FindSiblings();
+        private List<UIBase> Siblings => FindSiblings();
 
         /// <summary>
         ///  UI显示前触发
@@ -90,6 +96,11 @@ namespace JH
         private Action _onUIShowEvent;
 
         /// <summary>
+        ///  当前UI的状态
+        /// </summary>
+        [SerializeField, Tooltip("当前UI状态")] private UIState state;
+
+        /// <summary>
         ///  暴露给外部，增加UI同步显示行为的事件，注册此事件以增加显示行为，比如gameObject.SetActive(true)...等
         /// </summary>
         public event Action ShowActions
@@ -128,8 +139,17 @@ namespace JH
         /// <summary>
         ///  当前的UI状态
         /// </summary>
-        [field: SerializeField, Tooltip("当前UI状态")]
-        public UIState State { get; private set; }
+
+        public UIState State
+        {
+            get => state;
+            private set
+            {
+                if (value == state) return;
+                OnStateChanged?.Invoke(state, value);
+                state = value;
+            }
+        }
 
 
         protected virtual void Start()
@@ -501,7 +521,7 @@ namespace JH
                 siblings = scene.GetRootGameObjects()
                     .Select(i => i.GetComponent<UIBase>())
                     .Where(i => i != null && i != this && i.gameObject.activeInHierarchy).ToList();
-                
+
                 return siblings;
             }
 
@@ -522,7 +542,7 @@ namespace JH
                     }
                 }
             }
-            
+
             return siblings;
         }
 
@@ -531,7 +551,7 @@ namespace JH
         /// </summary>
         private List<UIBase> FindChildren()
         {
-           return GetComponentsInChildren<UIBase>()
+            return GetComponentsInChildren<UIBase>()
                 .Where(i => i.transform.parent == transform)
                 .Where(i => i != null && i.gameObject.activeInHierarchy).ToList();
         }
