@@ -309,7 +309,7 @@ namespace JH
             var showTask = OnUIShowAsync(_currentShowHideCts.Token);
 
             //等待所有任务完成
-            await JTask.WhenAll(beforeTask, showTask);
+            await JTask.WhenAll(_currentShowHideCts.Token, beforeTask, showTask);
 
             // UI显示后的逻辑
             AfterUIShowedInvoke();
