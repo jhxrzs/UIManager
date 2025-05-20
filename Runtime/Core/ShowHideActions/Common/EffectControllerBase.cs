@@ -111,16 +111,9 @@ namespace JH
         /// </summary>
         protected virtual async JTask OnUIHideAsync(CancellationToken token)
         {
-            try
-            {
-                await JTween.Tween(EffectAmount, 1, value => EffectAmount = value, hideDuration, token,
-                    hideEase == Ease.NotSet ? Ease.Linear : hideEase);
-            }
-            catch (OperationCanceledException )
-            {
-                // ReSharper disable once MethodHasAsyncOverloadWithCancellation
-                OnUIShow();
-            }
+            token.Register(OnUIShow);
+            await JTween.Tween(EffectAmount, 1, value => EffectAmount = value, hideDuration, token,
+                hideEase == Ease.NotSet ? Ease.Linear : hideEase);
         }
 
         /// <summary>
@@ -128,16 +121,9 @@ namespace JH
         /// </summary>
         protected virtual async JTask OnUIShowAsync(CancellationToken token)
         {
-            try
-            {
-                await JTween.Tween(EffectAmount, 0, value => EffectAmount = value, showDuration, token,
-                    showEase == Ease.NotSet ? Ease.Linear : showEase);
-            }
-            catch (OperationCanceledException )
-            {
-                // ReSharper disable once MethodHasAsyncOverloadWithCancellation
-                OnUIHide();
-            }
+            token.Register(OnUIHide);
+            await JTween.Tween(EffectAmount, 0, value => EffectAmount = value, showDuration, token,
+                showEase == Ease.NotSet ? Ease.Linear : showEase);
         }
 
         /// <summary>
