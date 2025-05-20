@@ -194,19 +194,12 @@ namespace JH
                 //如果UI已经是显示状态，则直接返回
                 if (State == UIState.Showed) return;
                 
-                Debug.Log($"异步 显示 {name}", this);
-                cancellationToken.Register(() =>
-                {
-                    Debug.Log($"取消异步 显示 {name}", this);
-                });
-                
-                
                 // 异步显示UI，不检查当前状态
                 await ShowNotCheckStateAsync(cancellationToken);
             }
             catch (OperationCanceledException)
             {
-                Debug.Log($"捕获到取消显示UI的异常 {name}", this);
+            
             }
         }
 
@@ -222,18 +215,12 @@ namespace JH
                 //如果UI已经是隐藏状态，则直接返回
                 if (State == UIState.Hided) return;
                 
-                Debug.Log($"异步 隐藏 {name}", this);
-                cancellationToken.Register(() =>
-                {
-                    Debug.Log($"取消异步 隐藏 {name}", this);
-                });
-                
                 // 异步隐藏UI，不检查当前状态
                 await HideNotCheckStateAsync(cancellationToken);
             }
             catch (OperationCanceledException)
             {
-                Debug.Log( $"捕获到取消隐藏UI的异常 {name}", this);
+                
             }
         }
 
