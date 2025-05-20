@@ -189,6 +189,7 @@ namespace JH
         /// <returns>返回异步任务</returns>
         public async JTask ShowAsync(CancellationToken cancellationToken)
         {
+            Debug.Log($"异步 显示 {name}", this);
             try
             {
                 //如果UI已经是显示状态，则直接返回
@@ -199,7 +200,7 @@ namespace JH
             }
             catch (OperationCanceledException)
             {
-                Hide();
+                Debug.Log($"取消异步 显示 {name}", this);
             }
         }
 
@@ -210,6 +211,7 @@ namespace JH
         /// <returns> 返回异步任务</returns>
         public async JTask HideAsync(CancellationToken cancellationToken)
         {
+            Debug.Log($"异步 隐藏 {name}", this);
             try
             {
                 //如果UI已经是隐藏状态，则直接返回
@@ -220,7 +222,7 @@ namespace JH
             }
             catch (OperationCanceledException)
             {
-                Show();
+                Debug.Log($"取消异步 隐藏 {name}", this);
             }
         }
 
