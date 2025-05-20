@@ -83,7 +83,7 @@ namespace JH
         /// <summary>
         ///  当前的显示/隐藏行为的取消token
         /// </summary>
-     //   private CancellationTokenSource _currentShowHideCts;
+        private CancellationTokenSource _currentShowHideCts;
 
         /// <summary>
         ///  当前的同步显示行为委托
@@ -164,7 +164,7 @@ namespace JH
         public void Show()
         {
             // 如果UI已经是显示状态，则直接返回
-            if (State == UIState.Showed) return;
+            if (State is UIState.Showed or UIState.Showing) return;
 
             // 显示UI，不检查当前状态
             ShowNotCheckState();
@@ -176,7 +176,7 @@ namespace JH
         public void Hide()
         {
             // 如果UI已经是隐藏状态，则直接返回
-            if (State == UIState.Hided) return;
+            if (State is UIState.Hided or UIState.Hiding) return;
 
             // 隐藏UI，不检查当前状态
             HideNotCheckState();
@@ -191,16 +191,14 @@ namespace JH
         {
             try
             {
-                Debug.Log("显示"+name);
                 //如果UI已经是显示状态，则直接返回
-                if (State == UIState.Showed) return;
-                
+                if (State is UIState.Showed or UIState.Showing) return;
+
                 // 异步显示UI，不检查当前状态
                 await ShowNotCheckStateAsync(cancellationToken);
             }
             catch (OperationCanceledException)
             {
-            
             }
         }
 
@@ -213,16 +211,14 @@ namespace JH
         {
             try
             {
-                Debug.Log("隐藏"+name);
                 //如果UI已经是隐藏状态，则直接返回
-                if (State == UIState.Hided) return;
-                
+                if (State is UIState.Hided or UIState.Hiding) return;
+
                 // 异步隐藏UI，不检查当前状态
                 await HideNotCheckStateAsync(cancellationToken);
             }
             catch (OperationCanceledException)
             {
-                
             }
         }
 
@@ -314,28 +310,18 @@ namespace JH
                 return;
             }
 
+            // 组合token,用于取消当前的显示/隐藏行为
+            _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
             //显隐同时，异步
             // UI显示前的逻辑
-            var beforeTask = BeforeUIShowAsyncInvoke(cancellationToken);
+            var beforeTask = BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
 
             // 在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
-            var showTask = OnUIShowAsync(cancellationToken);
+            var showTask = OnUIShowAsync(_currentShowHideCts.Token);
 
             //等待所有任务完成
-            await JTask.WhenAll(cancellationToken, beforeTask, showTask);
-            
-            // 组合token,用于取消当前的显示/隐藏行为
-            //_currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-            // //显隐同时，异步
-            // // UI显示前的逻辑
-            // var beforeTask = BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
-            //
-            // // 在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
-            // var showTask = OnUIShowAsync(_currentShowHideCts.Token);
-            //
-            // //等待所有任务完成
-            // await JTask.WhenAll(_currentShowHideCts.Token, beforeTask, showTask);
+            await JTask.WhenAll(_currentShowHideCts.Token, beforeTask, showTask);
 
             // UI显示后的逻辑
             AfterUIShowedInvoke();
@@ -355,15 +341,12 @@ namespace JH
                 HideNotCheckState();
                 return;
             }
-            
+
+            // 组合token,用于取消当前的显示/隐藏行为
+            _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
             // 在UI异步隐藏时执行的逻辑,此处会从委托中获取所有的异步隐藏行为，然后同步执行
-            await OnUIHideAsync(cancellationToken);
-            
-            // // 组合token,用于取消当前的显示/隐藏行为
-            // _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            //
-            // // 在UI异步隐藏时执行的逻辑,此处会从委托中获取所有的异步隐藏行为，然后同步执行
-            // await OnUIHideAsync(_currentShowHideCts.Token);
+            await OnUIHideAsync(_currentShowHideCts.Token);
 
             // UI隐藏后的逻辑
             AfterUIHidedInvoke();
@@ -477,7 +460,7 @@ namespace JH
         /// </summary>
         private void StopCurrentShowHideActions()
         {
-            //_currentShowHideCts?.Cancel();
+            _currentShowHideCts?.Cancel();
         }
 
         /// <summary>
@@ -508,10 +491,10 @@ namespace JH
             //循环找到所有的父面板
             var parents = new List<UIBase>();
             var current = transform.parent;
-            while (current != null)
+            while (current)
             {
                 var uiBase = current.GetComponent<UIBase>();
-                if (uiBase != null)
+                if (uiBase)
                 {
                     parents.Add(uiBase);
                 }
@@ -541,7 +524,7 @@ namespace JH
             var siblings = new List<UIBase>();
 
             //如果没有父节点，那么就是根节点，那么就找到所有的根节点,并且排除自己
-            if (parent == null)
+            if (!parent)
             {
                 var scene = gameObject.scene;
                 if (!scene.isLoaded) return new List<UIBase>();
@@ -549,7 +532,7 @@ namespace JH
                 // 获取所有的兄弟节点,并且排除自己和未激活的节点
                 siblings = scene.GetRootGameObjects()
                     .Select(i => i.GetComponent<UIBase>())
-                    .Where(i => i != null && i != this && i.gameObject.activeInHierarchy).ToList();
+                    .Where(i => i && i != this && i.gameObject.activeInHierarchy).ToList();
 
                 return siblings;
             }
@@ -565,7 +548,7 @@ namespace JH
                 if (child != transform)
                 {
                     var uiBase = child.GetComponent<UIBase>();
-                    if (uiBase != null)
+                    if (uiBase)
                     {
                         siblings.Add(uiBase);
                     }
@@ -582,7 +565,7 @@ namespace JH
         {
             return GetComponentsInChildren<UIBase>()
                 .Where(i => i.transform.parent == transform)
-                .Where(i => i != null && i.gameObject.activeInHierarchy).ToList();
+                .Where(i => i && i.gameObject.activeInHierarchy).ToList();
         }
     }
 }
