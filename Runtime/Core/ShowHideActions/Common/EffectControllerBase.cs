@@ -118,9 +118,7 @@ namespace JH
             }
             catch (OperationCanceledException )
             {
-                Debug.Log("检测到异步隐藏UI取消");
-                // ReSharper disable once MethodHasAsyncOverloadWithCancellation
-                OnUIShow();
+               
             }
         }
 
@@ -136,9 +134,7 @@ namespace JH
             }
             catch (OperationCanceledException e)
             {
-                Debug.Log("检测到异步显示UI取消");
-                // ReSharper disable once MethodHasAsyncOverloadWithCancellation
-                OnUIHide();
+               
             }
         }
 
