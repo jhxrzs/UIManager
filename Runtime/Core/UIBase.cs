@@ -189,12 +189,11 @@ namespace JH
         /// <returns>返回异步任务</returns>
         public async JTask ShowAsync(CancellationToken cancellationToken)
         {
-            Debug.Log($"异步 显示 {name}", this);
             try
             {
                 //如果UI已经是显示状态，则直接返回
                 if (State == UIState.Showed) return;
-
+                Debug.Log($"异步 显示 {name}", this);
                 // 异步显示UI，不检查当前状态
                 await ShowNotCheckStateAsync(cancellationToken);
             }
@@ -211,12 +210,12 @@ namespace JH
         /// <returns> 返回异步任务</returns>
         public async JTask HideAsync(CancellationToken cancellationToken)
         {
-            Debug.Log($"异步 隐藏 {name}", this);
             try
             {
                 //如果UI已经是隐藏状态，则直接返回
                 if (State == UIState.Hided) return;
-
+                
+                Debug.Log($"异步 隐藏 {name}", this);
                 // 异步隐藏UI，不检查当前状态
                 await HideNotCheckStateAsync(cancellationToken);
             }
