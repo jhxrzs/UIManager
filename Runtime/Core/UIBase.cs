@@ -189,11 +189,17 @@ namespace JH
         /// <returns>返回异步任务</returns>
         public async JTask ShowAsync(CancellationToken cancellationToken)
         {
-            //如果UI已经是显示状态，则直接返回
-            if (State == UIState.Showed) return;
+            try
+            {
+                //如果UI已经是显示状态，则直接返回
+                if (State == UIState.Showed) return;
 
-            // 异步显示UI，不检查当前状态
-            await ShowNotCheckStateAsync(cancellationToken);
+                // 异步显示UI，不检查当前状态
+                await ShowNotCheckStateAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         /// <summary>
@@ -203,11 +209,17 @@ namespace JH
         /// <returns> 返回异步任务</returns>
         public async JTask HideAsync(CancellationToken cancellationToken)
         {
-            //如果UI已经是隐藏状态，则直接返回
-            if (State == UIState.Hided) return;
+            try
+            {
+                //如果UI已经是隐藏状态，则直接返回
+                if (State == UIState.Hided) return;
 
-            // 异步隐藏UI，不检查当前状态
-            await HideNotCheckStateAsync(cancellationToken);
+                // 异步隐藏UI，不检查当前状态
+                await HideNotCheckStateAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
 
         /// <summary>
@@ -449,9 +461,6 @@ namespace JH
         private void StopCurrentShowHideActions()
         {
             _currentShowHideCts?.Cancel();
-            Debug.Log("停止了当前UI的异步显隐行为,令牌是否为空：" + (_currentShowHideCts != null) + "   "
-                      + "当前状态： " +
-                      _currentShowHideCts?.Token.IsCancellationRequested);
         }
 
         /// <summary>
