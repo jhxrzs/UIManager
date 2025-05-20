@@ -189,10 +189,6 @@ namespace JH
         /// <returns>返回异步任务</returns>
         public async JTask ShowAsync(CancellationToken cancellationToken)
         {
-            // 检测到取消操作则立即隐藏
-            cancellationToken.Register(Hide);
-
-            // 吞掉取消异常
             try
             {
                 //如果UI已经是显示状态，则直接返回
@@ -203,6 +199,7 @@ namespace JH
             }
             catch (OperationCanceledException)
             {
+                Hide();
             }
         }
 
@@ -213,10 +210,6 @@ namespace JH
         /// <returns> 返回异步任务</returns>
         public async JTask HideAsync(CancellationToken cancellationToken)
         {
-            // 检测到取消操作则立即显示
-            cancellationToken.Register(Show);
-            
-            // 吞掉取消异常
             try
             {
                 //如果UI已经是隐藏状态，则直接返回
@@ -227,6 +220,7 @@ namespace JH
             }
             catch (OperationCanceledException)
             {
+                Show();
             }
         }
 
