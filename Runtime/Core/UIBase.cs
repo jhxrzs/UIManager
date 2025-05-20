@@ -477,7 +477,7 @@ namespace JH
         /// </summary>
         private void StopCurrentShowHideActions()
         {
-            _currentShowHideCts?.Cancel();
+            //_currentShowHideCts?.Cancel();
         }
 
         /// <summary>
