@@ -206,7 +206,7 @@ namespace JH
             }
             catch (OperationCanceledException)
             {
-              
+                Debug.Log($"捕获到取消显示UI的异常 {name}", this);
             }
         }
 
@@ -233,7 +233,7 @@ namespace JH
             }
             catch (OperationCanceledException)
             {
-              
+                Debug.Log( $"捕获到取消隐藏UI的异常 {name}", this);
             }
         }
 
