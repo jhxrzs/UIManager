@@ -476,6 +476,7 @@ namespace JH
         private void StopCurrentShowHideActions()
         {
             _currentShowHideCts?.Cancel();
+            Debug.Log("停止了当前UI的显隐行为"+ name, this);
         }
 
         /// <summary>
