@@ -254,7 +254,7 @@ namespace JH
                 //执行所有的异步显示行为
                 if (_onUIShowAsyncEvent == null) return;
                 var taskList = _onUIShowAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, JTask>>();
-                await JTask.WhenAll(taskList.Select(i => i(cancellationToken)));
+                await JTask.WhenAll(taskList.Select(i => i(cancellationToken)), cancellationToken);
             }
             catch (OperationCanceledException e)
             {
@@ -273,7 +273,7 @@ namespace JH
                 //执行所有的异步隐藏行为
                 if (_onUIHideAsyncEvent == null) return;
                 var taskList = _onUIHideAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, JTask>>();
-                await JTask.WhenAll(taskList.Select(i => i.Invoke(cancellationToken)));
+                await JTask.WhenAll(taskList.Select(i => i.Invoke(cancellationToken)), cancellationToken);
             }
             catch (OperationCanceledException e)
             {
@@ -473,7 +473,7 @@ namespace JH
                     => eachParent.ShowAsync(cancellationToken)));
 
                 //等待所有任务完成
-                await JTask.WhenAll(taskList);
+                await JTask.WhenAll(taskList, cancellationToken);
             }
             catch (OperationCanceledException e)
             {
