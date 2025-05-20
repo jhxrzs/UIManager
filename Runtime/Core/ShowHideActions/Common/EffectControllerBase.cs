@@ -111,8 +111,17 @@ namespace JH
         /// </summary>
         protected virtual async JTask OnUIHideAsync(CancellationToken token)
         {
-            await JTween.Tween(EffectAmount, 1, value => EffectAmount = value, hideDuration, token,
-                hideEase == Ease.NotSet ? Ease.Linear : hideEase);
+            try
+            {
+                await JTween.Tween(EffectAmount, 1, value => EffectAmount = value, hideDuration, token,
+                    hideEase == Ease.NotSet ? Ease.Linear : hideEase);
+            }
+            catch (OperationCanceledException )
+            {
+                Debug.Log("检测到异步隐藏UI取消");
+                // ReSharper disable once MethodHasAsyncOverloadWithCancellation
+                OnUIShow();
+            }
         }
 
         /// <summary>
@@ -120,8 +129,17 @@ namespace JH
         /// </summary>
         protected virtual async JTask OnUIShowAsync(CancellationToken token)
         {
-            await JTween.Tween(EffectAmount, 0, value => EffectAmount = value, showDuration, token,
-                showEase == Ease.NotSet ? Ease.Linear : showEase);
+            try
+            {
+                await JTween.Tween(EffectAmount, 0, value => EffectAmount = value, showDuration, token,
+                    showEase == Ease.NotSet ? Ease.Linear : showEase);
+            }
+            catch (OperationCanceledException e)
+            {
+                Debug.Log("检测到异步显示UI取消");
+                // ReSharper disable once MethodHasAsyncOverloadWithCancellation
+                OnUIHide();
+            }
         }
 
         /// <summary>
