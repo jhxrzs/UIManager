@@ -189,11 +189,19 @@ namespace JH
         /// <returns>返回异步任务</returns>
         public async JTask ShowAsync(CancellationToken cancellationToken)
         {
-            //如果UI已经是显示状态，则直接返回
-            if (State == UIState.Showed) return;
+            try
+            {
+                //如果UI已经是显示状态，则直接返回
+                if (State == UIState.Showed) return;
 
-            // 异步显示UI，不检查当前状态
-            await ShowNotCheckStateAsync(cancellationToken);
+                // 异步显示UI，不检查当前状态
+                await ShowNotCheckStateAsync(cancellationToken);
+            }
+            catch (OperationCanceledException e)
+            {
+                Debug.Log("检测到取消操作");
+                throw;
+            }
         }
 
         /// <summary>
@@ -203,11 +211,19 @@ namespace JH
         /// <returns> 返回异步任务</returns>
         public async JTask HideAsync(CancellationToken cancellationToken)
         {
-            //如果UI已经是隐藏状态，则直接返回
-            if (State == UIState.Hided) return;
+            try
+            {
+                //如果UI已经是隐藏状态，则直接返回
+                if (State == UIState.Hided) return;
 
-            // 异步隐藏UI，不检查当前状态
-            await HideNotCheckStateAsync(cancellationToken);
+                // 异步隐藏UI，不检查当前状态
+                await HideNotCheckStateAsync(cancellationToken);
+            }
+            catch (OperationCanceledException e)
+            {
+                Debug.Log("检测到取消操作");
+                throw;
+            }
         }
 
         /// <summary>
@@ -233,10 +249,18 @@ namespace JH
         /// </summary>
         protected virtual async JTask OnUIShowAsync(CancellationToken cancellationToken)
         {
-            //执行所有的异步显示行为
-            if (_onUIShowAsyncEvent == null) return;
-            var taskList = _onUIShowAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, JTask>>();
-            await JTask.WhenAll(taskList.Select(i => i(cancellationToken)));
+            try
+            {
+                //执行所有的异步显示行为
+                if (_onUIShowAsyncEvent == null) return;
+                var taskList = _onUIShowAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, JTask>>();
+                await JTask.WhenAll(taskList.Select(i => i(cancellationToken)));
+            }
+            catch (OperationCanceledException e)
+            {
+                Debug.Log("检测到取消操作");
+                throw;
+            }
         }
 
         /// <summary>
@@ -244,10 +268,18 @@ namespace JH
         /// </summary>
         protected virtual async JTask OnUIHideAsync(CancellationToken cancellationToken)
         {
-            //执行所有的异步隐藏行为
-            if (_onUIHideAsyncEvent == null) return;
-            var taskList = _onUIHideAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, JTask>>();
-            await JTask.WhenAll(taskList.Select(i => i.Invoke(cancellationToken)));
+            try
+            {
+                //执行所有的异步隐藏行为
+                if (_onUIHideAsyncEvent == null) return;
+                var taskList = _onUIHideAsyncEvent.GetInvocationList().Cast<Func<CancellationToken, JTask>>();
+                await JTask.WhenAll(taskList.Select(i => i.Invoke(cancellationToken)));
+            }
+            catch (OperationCanceledException e)
+            {
+                Debug.Log("检测到取消操作");
+                throw;
+            }
         }
 
         /// <summary>
@@ -288,31 +320,39 @@ namespace JH
         /// </summary>
         private async JTask ShowNotCheckStateAsync(CancellationToken cancellationToken)
         {
-            //如果当前UI存在显隐行为，立即停止
-            StopCurrentShowHideActions();
-
-            //如果显示行为为空，则退化为直接显示
-            if (_onUIShowAsyncEvent == null)
+            try
             {
-                ShowNotCheckState();
-                return;
+                //如果当前UI存在显隐行为，立即停止
+                StopCurrentShowHideActions();
+
+                //如果显示行为为空，则退化为直接显示
+                if (_onUIShowAsyncEvent == null)
+                {
+                    ShowNotCheckState();
+                    return;
+                }
+
+                // 组合token,用于取消当前的显示/隐藏行为
+                _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+                //显隐同时，异步
+                // UI显示前的逻辑
+                var beforeTask = BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
+
+                // 在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
+                var showTask = OnUIShowAsync(_currentShowHideCts.Token);
+
+                //等待所有任务完成
+                await JTask.WhenAll(_currentShowHideCts.Token, beforeTask, showTask);
+
+                // UI显示后的逻辑
+                AfterUIShowedInvoke();
             }
-
-            // 组合token,用于取消当前的显示/隐藏行为
-            _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-            //显隐同时，异步
-            // UI显示前的逻辑
-            var beforeTask = BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
-
-            // 在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
-            var showTask = OnUIShowAsync(_currentShowHideCts.Token);
-
-            //等待所有任务完成
-            await JTask.WhenAll(_currentShowHideCts.Token, beforeTask, showTask);
-
-            // UI显示后的逻辑
-            AfterUIShowedInvoke();
+            catch (OperationCanceledException e)
+            {
+                Debug.Log("检测到取消操作");
+                throw;
+            }
         }
 
         /// <summary>
@@ -320,24 +360,32 @@ namespace JH
         /// </summary>
         private async JTask HideNotCheckStateAsync(CancellationToken cancellationToken)
         {
-            // UI隐藏前的逻辑
-            BeforeUIHideInvoke();
-
-            // 如果隐藏行为为空，则退化为直接隐藏
-            if (_onUIHideAsyncEvent == null)
+            try
             {
-                HideNotCheckState();
-                return;
+                // UI隐藏前的逻辑
+                BeforeUIHideInvoke();
+
+                // 如果隐藏行为为空，则退化为直接隐藏
+                if (_onUIHideAsyncEvent == null)
+                {
+                    HideNotCheckState();
+                    return;
+                }
+
+                // 组合token,用于取消当前的显示/隐藏行为
+                _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+                // 在UI异步隐藏时执行的逻辑,此处会从委托中获取所有的异步隐藏行为，然后同步执行
+                await OnUIHideAsync(_currentShowHideCts.Token);
+
+                // UI隐藏后的逻辑
+                AfterUIHidedInvoke();
             }
-
-            // 组合token,用于取消当前的显示/隐藏行为
-            _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
-            // 在UI异步隐藏时执行的逻辑,此处会从委托中获取所有的异步隐藏行为，然后同步执行
-            await OnUIHideAsync(_currentShowHideCts.Token);
-
-            // UI隐藏后的逻辑
-            AfterUIHidedInvoke();
+            catch (OperationCanceledException e)
+            {
+                Debug.Log("检测到取消操作");
+                throw;
+            }
         }
 
 
@@ -408,22 +456,30 @@ namespace JH
         /// </summary>
         private async JTask BeforeUIShowAsyncInvoke(CancellationToken cancellationToken)
         {
-            //设置状态
-            State = UIState.Showing;
+            try
+            {
+                //设置状态
+                State = UIState.Showing;
 
-            // 触发事件
-            BeforeUIShowEvent?.Invoke();
+                // 触发事件
+                BeforeUIShowEvent?.Invoke();
 
-            //隐藏互斥兄弟节点中，显示的面板
-            var taskList = Siblings.Where(i => i.mutexGroup == mutexGroup)
-                .Select(t => t.HideAsync(cancellationToken)).ToList();
+                //隐藏互斥兄弟节点中，显示的面板
+                var taskList = Siblings.Where(i => i.mutexGroup == mutexGroup)
+                    .Select(t => t.HideAsync(cancellationToken)).ToList();
 
-            //显示父节点中，隐藏的节点
-            taskList.AddRange(Parents.Select(eachParent
-                => eachParent.ShowAsync(cancellationToken)));
+                //显示父节点中，隐藏的节点
+                taskList.AddRange(Parents.Select(eachParent
+                    => eachParent.ShowAsync(cancellationToken)));
 
-            //等待所有任务完成
-            await JTask.WhenAll(taskList);
+                //等待所有任务完成
+                await JTask.WhenAll(taskList);
+            }
+            catch (OperationCanceledException e)
+            {
+                Debug.Log("检测到取消操作");
+                throw;
+            }
         }
 
         /// <summary>
