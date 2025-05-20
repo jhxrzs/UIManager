@@ -83,7 +83,7 @@ namespace JH
         /// <summary>
         ///  当前的显示/隐藏行为的取消token
         /// </summary>
-        private CancellationTokenSource _currentShowHideCts;
+     //   private CancellationTokenSource _currentShowHideCts;
 
         /// <summary>
         ///  当前的同步显示行为委托
@@ -314,18 +314,28 @@ namespace JH
                 return;
             }
 
-            // 组合token,用于取消当前的显示/隐藏行为
-            _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
             //显隐同时，异步
             // UI显示前的逻辑
-            var beforeTask = BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
+            var beforeTask = BeforeUIShowAsyncInvoke(cancellationToken);
 
             // 在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
-            var showTask = OnUIShowAsync(_currentShowHideCts.Token);
+            var showTask = OnUIShowAsync(cancellationToken);
 
             //等待所有任务完成
-            await JTask.WhenAll(_currentShowHideCts.Token, beforeTask, showTask);
+            await JTask.WhenAll(cancellationToken, beforeTask, showTask);
+            
+            // 组合token,用于取消当前的显示/隐藏行为
+            //_currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+            // //显隐同时，异步
+            // // UI显示前的逻辑
+            // var beforeTask = BeforeUIShowAsyncInvoke(_currentShowHideCts.Token);
+            //
+            // // 在UI异步显示时执行的逻辑,此处会从委托中获取所有的异步显示行为，然后同步执行
+            // var showTask = OnUIShowAsync(_currentShowHideCts.Token);
+            //
+            // //等待所有任务完成
+            // await JTask.WhenAll(_currentShowHideCts.Token, beforeTask, showTask);
 
             // UI显示后的逻辑
             AfterUIShowedInvoke();
@@ -345,12 +355,15 @@ namespace JH
                 HideNotCheckState();
                 return;
             }
-
-            // 组合token,用于取消当前的显示/隐藏行为
-            _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
+            
             // 在UI异步隐藏时执行的逻辑,此处会从委托中获取所有的异步隐藏行为，然后同步执行
-            await OnUIHideAsync(_currentShowHideCts.Token);
+            await OnUIHideAsync(cancellationToken);
+            
+            // // 组合token,用于取消当前的显示/隐藏行为
+            // _currentShowHideCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            //
+            // // 在UI异步隐藏时执行的逻辑,此处会从委托中获取所有的异步隐藏行为，然后同步执行
+            // await OnUIHideAsync(_currentShowHideCts.Token);
 
             // UI隐藏后的逻辑
             AfterUIHidedInvoke();
