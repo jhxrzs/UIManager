@@ -449,6 +449,11 @@ namespace JH
         private void StopCurrentShowHideActions()
         {
             _currentShowHideCts?.Cancel();
+            Debug.Log("停止了当前UI的异步显隐行为,令牌是否为空：" + _currentShowHideCts != null + "   "
+                                                                             + "当前状态： " +
+                                                                             _currentShowHideCts?.Token
+                                                                                 .IsCancellationRequested
+            );
         }
 
         /// <summary>
