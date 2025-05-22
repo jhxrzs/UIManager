@@ -164,7 +164,7 @@ namespace JH
         public void Show()
         {
             // 如果UI已经是显示状态，则直接返回
-            if (State is UIState.Showed or UIState.Showing) return;
+            if (State is UIState.Showed) return;
 
             // 显示UI，不检查当前状态
             ShowNotCheckState();
@@ -176,7 +176,7 @@ namespace JH
         public void Hide()
         {
             // 如果UI已经是隐藏状态，则直接返回
-            if (State is UIState.Hided or UIState.Hiding) return;
+            if (State is UIState.Hided) return;
 
             // 隐藏UI，不检查当前状态
             HideNotCheckState();
@@ -191,8 +191,9 @@ namespace JH
         {
             try
             {
+                Debug.Log("显示" + name);
                 //如果UI已经是显示状态，则直接返回
-                if (State is UIState.Showed or UIState.Showing) return;
+                if (State is UIState.Showed) return;
 
                 // 异步显示UI，不检查当前状态
                 await ShowNotCheckStateAsync(cancellationToken);
@@ -211,8 +212,9 @@ namespace JH
         {
             try
             {
+                Debug.Log("隐藏" + name);
                 //如果UI已经是隐藏状态，则直接返回
-                if (State is UIState.Hided or UIState.Hiding) return;
+                if (State is UIState.Hided) return;
 
                 // 异步隐藏UI，不检查当前状态
                 await HideNotCheckStateAsync(cancellationToken);
