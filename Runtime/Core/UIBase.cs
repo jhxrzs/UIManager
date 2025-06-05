@@ -191,7 +191,6 @@ namespace JH
         {
             try
             {
-                Debug.Log("显示" + name);
                 //如果UI已经是显示状态，则直接返回
                 if (State is UIState.Showed) return;
 
@@ -212,7 +211,6 @@ namespace JH
         {
             try
             {
-                Debug.Log("隐藏" + name);
                 //如果UI已经是隐藏状态，则直接返回
                 if (State is UIState.Hided) return;
 
