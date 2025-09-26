@@ -7,7 +7,7 @@
   "dependencies": {
     "com.jh.jtask": "1.0.0",
     "com.jh.jtween": "1.0.0",
-    "com.unity.ugui": "2.0.0"
+    "com.unity.ugui": "1.0.0"
   },
   "author": {
     "name": "\u91d1\u8f89",
