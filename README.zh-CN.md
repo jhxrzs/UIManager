@@ -85,13 +85,14 @@ UIBase 提供了以下核心 API：
 | `ShowAsync(CancellationToken)` | 异步显示 UI 面板 | JTask |
 | `HideAsync(CancellationToken)` | 异步隐藏 UI 面板 | JTask |
 
-> 💡 注意：`JTask` 可视为等同于 .NET 中的 `Task` 使用。
+> 💡 注意：`JTask` 可视为等同于 .NET 中的 `Task` 使用。异步显隐被取消时会向调用方抛出 `OperationCanceledException`，调用方应按标准异步取消流程处理。
 
 ## ⚠️ 使用注意事项
 
 1. **互斥组规则**：同一互斥组内，同时只能有一个 UI 面板处于显示状态
 2. **层级管理**：同一父节点下的不同互斥组 UI 可以同时显示，最后显示的面板会自动置顶
 3. **自定义行为**：您可以通过继承现有控制器来实现自定义的显隐效果
+4. **动态关系**：父、子和兄弟 UI 关系以当前 Transform 层级为准；运行时新增、移除或换父后，无需维护额外邻接表
 
 ## 🔍 示例项目
 

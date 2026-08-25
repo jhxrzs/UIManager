@@ -1,11 +1,11 @@
 {
   "name": "com.jh.uimanager",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "displayName": "JH_UI\u7ba1\u7406\u5668",
   "description": "\u7b80\u6613\u7684UI\u7ba1\u7406\u5668\u3002",
   "unity": "6000.0",
   "dependencies": {
-    "com.jh.jtask": "1.0.0",
+    "com.jh.jtask": "1.0.1",
     "com.jh.jtween": "1.0.0",
     "com.unity.ugui": "1.0.0"
   },
