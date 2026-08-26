@@ -5,53 +5,33 @@ using UnityEngine.UI;
 namespace JH
 {
     /// <summary>
-    ///   按钮的显隐交互实体类
+    ///   按钮的显隐交互实体类。
     /// </summary>
     [Serializable]
     public class ButtonEntity : ShowHideInteractionEntity
     {
-        [field: SerializeField, Header("显隐行为")]
+        /// <summary>
+        ///  按钮触发后的显隐行为。
+        /// </summary>
+        [SerializeField, Header("显隐行为")]
         private ShowHideAction action;
 
+        /// <summary>
+        ///  用于触发显隐行为的按钮。
+        /// </summary>
         [SerializeField, Header("显隐按钮")] private Button button;
 
-        /// <summary>
-        ///  显隐行为
-        /// </summary>
+        /// <inheritdoc />
         public override ShowHideAction Action => action;
 
+        /// <inheritdoc />
         public override void Init(UIBase ui)
         {
+            // 按钮点击后进入基类维护的统一显隐执行入口。
             button.onClick.AddListener(() =>
             {
-                //如果是显示
-                if (Action == ShowHideAction.ToShow)
-                {
-                    if (IsAsync) _ = ui.ShowAsync(ui.destroyCancellationToken);
-                    else ui.Show();
-                    return;
-                }
-
-                if (Action == ShowHideAction.ToHide)
-                {
-                    if (IsAsync) _ = ui.HideAsync(ui.destroyCancellationToken);
-                    else ui.Hide();
-                    return;
-                }
-
-                if (Action == ShowHideAction.Switch)
-                {
-                    if (ui.State is UIState.Showed or UIState.Showing)
-                    {
-                        if (IsAsync) _ = ui.HideAsync(ui.destroyCancellationToken);
-                        else ui.Hide();
-                    }
-                    else
-                    {
-                        if (IsAsync) _ = ui.ShowAsync(ui.destroyCancellationToken);
-                        else ui.Show();
-                    }
-                }
+                // 具体的同步、异步和切换逻辑只由基类维护。
+                Execute(ui);
             });
         }
     }
