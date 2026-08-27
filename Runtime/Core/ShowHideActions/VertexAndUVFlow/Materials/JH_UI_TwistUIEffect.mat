@@ -30,21 +30,24 @@ Material:
     m_Ints: []
     m_Floats:
     - _ColorMask: 15
-    - _EDGE_SMOOTH: 0
     - _EffectAmount: 0
-    - _SinAmplitude: 0.123
-    - _SinFrequency: 16.2
+    - _FadePower: 1.35
+    - _FadeStart: 0.68
+    - _FlowHighlight: 0.035
+    - _FlowSpeed: 1.15
+    - _RefractionBlend: 0.58
+    - _SinAmplitude: 0.004
+    - _SinFrequency: 4.5
     - _Stencil: 0
     - _StencilComp: 8
     - _StencilOp: 0
     - _StencilReadMask: 255
     - _StencilWriteMask: 255
-    - _TwistIntensity: 1.6
-    - _ZOOM: 0
+    - _TwistIntensity: 0.55
+    - _UseUIAlphaClip: 0
     - unity_GUIZTestMode: 4
     m_Colors:
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _EndPointUV: {r: 0, g: 1, b: 0, a: 0}
-    - _EndScreenPoint: {r: 0, g: 0, b: 0, a: 0}
-    - _UVOffset: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
