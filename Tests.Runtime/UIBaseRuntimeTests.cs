@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -430,6 +431,555 @@ namespace JH.Test_UIManager
         }
 
         /// <summary>
+        ///  验证父UI只显示已标记的直接子分支，并支持多个子UI、多层级联和失活节点恢复。
+        /// </summary>
+        [Test]
+        public void Show_MarkedChildrenAndDescendant_ShouldShowOnlyMarkedBranchesOnce()
+        {
+            // 使用非UI容器隔离根面板，避免测试场景中的其他UI参与互斥关系。
+            var container = CreateObject("MarkedChildrenRoot");
+            var parentUI = CreateUI("MarkedChildrenParent", container.transform);
+
+            // 三个直接子UI中只标记前两个，第三个分支必须保持隐藏。
+            var firstChild = CreateUI("FirstMarkedChild", parentUI.transform);
+            var secondChild = CreateUI("SecondMarkedInactiveChild", parentUI.transform);
+            var skippedChild = CreateUI("SkippedChild", parentUI.transform);
+            firstChild.ShowWithParent = true;
+            secondChild.ShowWithParent = true;
+
+            // 已标记分支继续向下级联，未标记分支下的标记孙节点不得越级显示。
+            var markedGrandchild = CreateUI("MarkedGrandchild", firstChild.transform);
+            var skippedGrandchild = CreateUI("SkippedGrandchild", skippedChild.transform);
+            markedGrandchild.ShowWithParent = true;
+            skippedGrandchild.ShowWithParent = true;
+
+            // 两个需要同时显示的直接子UI必须属于不同互斥组。
+            SetUIBasePrivateField(secondChild, "mutexGroup", 1);
+
+            // 第二个目标节点模拟通过SetActive(false)完成隐藏的真实面板。
+            secondChild.gameObject.SetActive(false);
+            secondChild.ShowActions += () => secondChild.gameObject.SetActive(true);
+
+            // 为全部相关UI记录同步显示行为次数，精确检查是否出现父子递归重入。
+            var panels = new[]
+            {
+                parentUI, firstChild, secondChild, markedGrandchild, skippedChild, skippedGrandchild
+            };
+            var showActionCounts = new int[panels.Length];
+            for (var i = 0; i < panels.Length; i++)
+            {
+                var index = i;
+                panels[index].ShowActions += () => showActionCounts[index]++;
+            }
+
+            // 子UI显示行为发生时，父UI仍应处于包围整棵默认子树生命周期的Showing状态。
+            firstChild.ShowActions += () => Assert.AreEqual(UIState.Showing, parentUI.State,
+                "默认子UI显示期间父UI应保持Showing");
+            secondChild.ShowActions += () => Assert.AreEqual(UIState.Showing, parentUI.State,
+                "失活默认子UI恢复期间父UI应保持Showing");
+
+            // 只请求父UI显示，所有已标记分支都应由UIBase内部完成级联。
+            parentUI.Show();
+
+            // 父UI、两个标记直接子UI和标记孙节点应全部完成显示。
+            Assert.AreEqual(UIState.Showed, parentUI.State, "父UI应完成显示");
+            Assert.AreEqual(UIState.Showed, firstChild.State, "第一个标记子UI应完成显示");
+            Assert.AreEqual(UIState.Showed, secondChild.State, "第二个标记子UI应完成显示");
+            Assert.AreEqual(UIState.Showed, markedGrandchild.State, "标记孙节点应沿标记分支完成显示");
+            Assert.IsTrue(secondChild.gameObject.activeSelf, "由隐藏行为失活的标记子UI应能重新激活");
+
+            // 未标记直接子UI及其后代均不得被父UI越级带出。
+            Assert.AreEqual(UIState.Hided, skippedChild.State, "未标记直接子UI应保持隐藏");
+            Assert.AreEqual(UIState.Hided, skippedGrandchild.State, "未标记分支下的孙节点应保持隐藏");
+
+            // 每个已显示节点只执行一次行为，未显示分支完全没有显示副作用。
+            CollectionAssert.AreEqual(new[] { 1, 1, 1, 1, 0, 0 }, showActionCounts,
+                "随父显示不得重复进入父子生命周期或触发未标记分支");
+        }
+
+        /// <summary>
+        ///  验证直接同步显示标记子UI时父UI不会重复启动该子UI或同组默认兄弟。
+        /// </summary>
+        [Test]
+        public void Show_MarkedChildRequestedDirectly_ShouldPreferExplicitRequestWithoutReentry()
+        {
+            // 两个同组标记子UI用于覆盖显式请求与父默认级联发生竞争的路径。
+            var container = CreateObject("DirectMarkedShowRoot");
+            var parentUI = CreateUI("DirectMarkedShowParent", container.transform);
+            var requestedChild = CreateUI("ExplicitMarkedChild", parentUI.transform);
+            var defaultSibling = CreateUI("SameGroupDefaultSibling", parentUI.transform);
+            requestedChild.ShowWithParent = true;
+            defaultSibling.ShowWithParent = true;
+
+            // 分别记录父、显式子UI和竞争兄弟的显示行为次数。
+            var parentShowCount = 0;
+            var requestedShowCount = 0;
+            var siblingShowCount = 0;
+            parentUI.ShowActions += () => parentShowCount++;
+            requestedChild.ShowActions += () => requestedShowCount++;
+            defaultSibling.ShowActions += () => siblingShowCount++;
+
+            // 显式显示子UI会向上显示父UI，父级联必须跳过Showing请求来源及其同组竞争项。
+            requestedChild.Show();
+
+            // 父UI和显式请求都应各完成一次，默认兄弟不得反向取代显式请求。
+            Assert.AreEqual(UIState.Showed, parentUI.State, "显式子UI显示时应补齐父UI");
+            Assert.AreEqual(UIState.Showed, requestedChild.State, "显式请求的子UI应完成显示");
+            Assert.AreEqual(UIState.Hided, defaultSibling.State, "同组默认兄弟应让显式Showing请求优先");
+            Assert.AreEqual(1, parentShowCount, "父UI显示行为应且只应执行一次");
+            Assert.AreEqual(1, requestedShowCount, "显式子UI显示行为应且只应执行一次");
+            Assert.AreEqual(0, siblingShowCount, "同组默认兄弟不应产生显示副作用");
+        }
+
+        /// <summary>
+        ///  验证直接异步显示标记子UI时不会形成父等待子、子等待父的依赖环。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator ShowAsync_MarkedChildRequestedDirectly_ShouldCompleteWithoutDependencyCycle()
+        {
+            // 使用两层默认分支覆盖显式孙UI请求沿祖先链向上显示的异步路径。
+            var container = CreateObject("DirectMarkedAsyncRoot");
+            var rootUI = CreateUI("DirectMarkedAsyncParent", container.transform);
+            var requestedBranch = CreateUI("RequestedMarkedBranch", rootUI.transform);
+            var defaultSibling = CreateUI("SameGroupAsyncDefaultSibling", rootUI.transform);
+            var requestedChild = CreateUI("ExplicitMarkedAsyncChild", requestedBranch.transform);
+            requestedBranch.ShowWithParent = true;
+            requestedChild.ShowWithParent = true;
+            defaultSibling.ShowWithParent = true;
+
+            // 所有处理器立即完成，使本用例只聚焦父子依赖关系和调用次数。
+            var rootActionCount = 0;
+            var branchActionCount = 0;
+            var requestedActionCount = 0;
+            var siblingActionCount = 0;
+            rootUI.ShowAsyncActions += _ =>
+            {
+                rootActionCount++;
+                return JTask.CompletedTask;
+            };
+            requestedBranch.ShowAsyncActions += _ =>
+            {
+                branchActionCount++;
+                return JTask.CompletedTask;
+            };
+            requestedChild.ShowAsyncActions += _ =>
+            {
+                requestedActionCount++;
+                return JTask.CompletedTask;
+            };
+            defaultSibling.ShowAsyncActions += _ =>
+            {
+                siblingActionCount++;
+                return JTask.CompletedTask;
+            };
+
+            // 捕获异步结果并通过统一超时桥接器检测潜在死锁。
+            Task<Exception> showOperation = CaptureException(requestedChild.ShowAsync(CancellationToken.None));
+            yield return WaitForTask(showOperation);
+
+            // 整条父子链应正常完成，且同组默认兄弟不得导致链接令牌自取消。
+            Assert.IsNull(showOperation.Result, $"直接异步显示标记子UI不应失败：{showOperation.Result}");
+            Assert.AreEqual(UIState.Showed, rootUI.State, "异步显式请求应补齐根父UI");
+            Assert.AreEqual(UIState.Showed, requestedBranch.State, "显式请求所在的默认分支应完成显示");
+            Assert.AreEqual(UIState.Showed, requestedChild.State, "异步显式请求的子UI应完成显示");
+            Assert.AreEqual(UIState.Hided, defaultSibling.State, "同组默认兄弟应保持隐藏");
+            Assert.AreEqual(1, rootActionCount, "根父UI异步显示行为应执行一次");
+            Assert.AreEqual(1, branchActionCount, "显式请求所在分支的显示行为应执行一次");
+            Assert.AreEqual(1, requestedActionCount, "显式子UI异步显示行为应执行一次");
+            Assert.AreEqual(0, siblingActionCount, "同组默认兄弟不应启动异步显示行为");
+        }
+
+        /// <summary>
+        ///  验证父UI异步显示会按Hierarchy顺序等待全部标记子UI并跳过未标记子UI。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator ShowAsync_MarkedChildren_ShouldWaitInHierarchyOrderAndSkipUnmarked()
+        {
+            // 创建两个不同互斥组的标记子UI和一个未标记子UI。
+            var container = CreateObject("MarkedChildrenAsyncRoot");
+            var parentUI = CreateUI("MarkedChildrenAsyncParent", container.transform);
+            var firstChild = CreateUI("FirstMarkedAsyncChild", parentUI.transform);
+            var secondChild = CreateUI("SecondMarkedAsyncChild", parentUI.transform);
+            var skippedChild = CreateUI("SkippedAsyncChild", parentUI.transform);
+            firstChild.ShowWithParent = true;
+            secondChild.ShowWithParent = true;
+            SetUIBasePrivateField(secondChild, "mutexGroup", 1);
+
+            // 第一个子UI保持挂起，用于观察第二个子UI和父After是否会被提前启动。
+            var releaseFirstChild = false;
+            var firstChildStarted = false;
+            var secondChildActionCount = 0;
+            var skippedChildActionCount = 0;
+            var parentAfterCount = 0;
+            firstChild.ShowAsyncActions += _ =>
+            {
+                firstChildStarted = true;
+                return new JTask(() => releaseFirstChild);
+            };
+            secondChild.ShowAsyncActions += _ =>
+            {
+                secondChildActionCount++;
+                return JTask.CompletedTask;
+            };
+            skippedChild.ShowAsyncActions += _ =>
+            {
+                skippedChildActionCount++;
+                return JTask.CompletedTask;
+            };
+            parentUI.AfterUIShowedEvent += () => parentAfterCount++;
+
+            // 启动父UI异步显示并等待一帧，使第一个子UI进入挂起处理器。
+            Task<Exception> showOperation = CaptureException(parentUI.ShowAsync(CancellationToken.None));
+            yield return null;
+
+            // 先保存挂起期间的观察值，再释放处理器，避免断言失败遗留永久等待任务。
+            var completedWhileFirstPending = showOperation.IsCompleted;
+            var secondCountWhileFirstPending = secondChildActionCount;
+            var parentAfterWhileFirstPending = parentAfterCount;
+            releaseFirstChild = true;
+            yield return WaitForTask(showOperation);
+
+            // 父操作必须等待第一个子UI，且第二个子UI不得与其并发启动。
+            Assert.IsTrue(firstChildStarted, "第一个标记子UI应启动异步显示行为");
+            Assert.IsFalse(completedWhileFirstPending, "标记子UI未完成时父ShowAsync不得提前完成");
+            Assert.AreEqual(0, secondCountWhileFirstPending, "第二个标记子UI应等待前一个子UI完成");
+            Assert.AreEqual(0, parentAfterWhileFirstPending, "默认子树未完成时父After不得触发");
+
+            // 解除闸门后父UI与两个标记子UI应依次完成，未标记子UI完全不参与。
+            Assert.IsNull(showOperation.Result, $"父UI异步级联显示不应失败：{showOperation.Result}");
+            Assert.AreEqual(UIState.Showed, parentUI.State, "父UI应在默认子树完成后提交Showed");
+            Assert.AreEqual(UIState.Showed, firstChild.State, "第一个标记子UI应完成显示");
+            Assert.AreEqual(UIState.Showed, secondChild.State, "第二个标记子UI应完成显示");
+            Assert.AreEqual(UIState.Hided, skippedChild.State, "未标记子UI应保持隐藏");
+            Assert.AreEqual(1, secondChildActionCount, "第二个标记子UI显示行为应执行一次");
+            Assert.AreEqual(0, skippedChildActionCount, "未标记子UI不应启动显示行为");
+            Assert.AreEqual(1, parentAfterCount, "默认子树完成后父After应且只应触发一次");
+        }
+
+        /// <summary>
+        ///  验证showWithParent只筛选父显示目标，不改变重复Show短路和父隐藏全部子UI的规则。
+        /// </summary>
+        [Test]
+        public void ShowAndHide_MarkedAndUnmarkedChildren_ShouldPreserveExistingParentRules()
+        {
+            // 两个不同互斥组的子UI可以同时显示，便于验证父隐藏会处理全部直接子UI。
+            var container = CreateObject("PreservedParentRulesRoot");
+            var parentUI = CreateUI("PreservedParentRulesParent", container.transform);
+            var markedChild = CreateUI("MarkedChild", parentUI.transform);
+            var unmarkedChild = CreateUI("UnmarkedChild", parentUI.transform);
+            markedChild.ShowWithParent = true;
+            SetUIBasePrivateField(unmarkedChild, "mutexGroup", 1);
+
+            // 分别记录两个子UI的显示和隐藏行为次数。
+            var markedShowCount = 0;
+            var markedHideCount = 0;
+            var unmarkedShowCount = 0;
+            var unmarkedHideCount = 0;
+            markedChild.ShowActions += () => markedShowCount++;
+            markedChild.HideActions += () => markedHideCount++;
+            unmarkedChild.ShowActions += () => unmarkedShowCount++;
+            unmarkedChild.HideActions += () => unmarkedHideCount++;
+
+            // 父显示只带起标记子UI，随后手动显示未标记子UI以准备父隐藏验证。
+            parentUI.Show();
+            unmarkedChild.Show();
+            Assert.AreEqual(UIState.Showed, markedChild.State, "标记子UI应随父显示");
+            Assert.AreEqual(UIState.Showed, unmarkedChild.State, "未标记子UI应支持独立显示");
+
+            // 父隐藏仍应隐藏全部直接子UI，不得只处理showWithParent节点。
+            parentUI.Hide();
+            Assert.AreEqual(UIState.Hided, markedChild.State, "父隐藏应处理标记子UI");
+            Assert.AreEqual(UIState.Hided, unmarkedChild.State, "父隐藏应处理未标记子UI");
+            Assert.AreEqual(1, markedHideCount, "标记子UI隐藏行为应执行一次");
+            Assert.AreEqual(1, unmarkedHideCount, "未标记子UI隐藏行为应执行一次");
+
+            // 再次显示父UI会恢复标记子UI，但未标记子UI仍保持隐藏。
+            parentUI.Show();
+            Assert.AreEqual(UIState.Showed, markedChild.State, "父UI重新显示时应恢复标记子UI");
+            Assert.AreEqual(UIState.Hided, unmarkedChild.State, "父UI重新显示时不应恢复未标记子UI");
+
+            // 手动隐藏标记子UI后，对已Showed父UI重复Show仍必须保持原有空操作语义。
+            markedChild.Hide();
+            var markedShowCountBeforeRepeatedParentShow = markedShowCount;
+            parentUI.Show();
+            Assert.AreEqual(UIState.Hided, markedChild.State, "已显示父UI重复Show不应恢复手动隐藏的子UI");
+            Assert.AreEqual(markedShowCountBeforeRepeatedParentShow, markedShowCount,
+                "父UI重复Show不应重新派发标记子UI显示行为");
+            Assert.AreEqual(2, markedShowCount, "标记子UI只应随两次真实父显示生命周期显示");
+            Assert.AreEqual(1, unmarkedShowCount, "未标记子UI只应响应一次手动显示");
+        }
+
+        /// <summary>
+        ///  验证父UI和标记子UI以不同Start顺序初始化时都只执行一次显示生命周期。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Start_ParentAndMarkedChildInEitherOrder_ShouldInitializeShowOnce()
+        {
+            // 第一条分支让父UI先Start，用于覆盖父级联发生在子UI Start之前的路径。
+            var parentFirstContainer = CreateObject("ParentFirstStartRoot");
+            var parentFirst = CreateUI("ParentFirst", parentFirstContainer.transform);
+            var parentFirstChild = CreateUI("ParentFirstMarkedChild", parentFirst.transform);
+            parentFirstChild.ShowWithParent = true;
+            SetUIBasePrivateField(parentFirst, "state", UIState.Showed);
+
+            // 第二条分支让子UI先Start，用于覆盖子初态完成后再接收父级联的路径。
+            var childFirstContainer = CreateObject("ChildFirstStartRoot");
+            var childFirstParent = CreateUI("ChildFirstParent", childFirstContainer.transform);
+            var childFirst = CreateUI("ChildFirstMarkedChild", childFirstParent.transform);
+            childFirst.ShowWithParent = true;
+            SetUIBasePrivateField(childFirstParent, "state", UIState.Showed);
+
+            // 为两条分支分别统计父子显示行为次数。
+            var parentFirstShowCount = 0;
+            var parentFirstChildShowCount = 0;
+            var childFirstParentShowCount = 0;
+            var childFirstShowCount = 0;
+            parentFirst.ShowActions += () => parentFirstShowCount++;
+            parentFirstChild.ShowActions += () => parentFirstChildShowCount++;
+            childFirstParent.ShowActions += () => childFirstParentShowCount++;
+            childFirst.ShowActions += () => childFirstShowCount++;
+
+            // 先启用第一条分支的父UI，等待其Start级联，再启用已经完成显示的子UI。
+            parentFirst.enabled = true;
+            yield return null;
+            parentFirstChild.enabled = true;
+            yield return null;
+
+            // 先启用第二条分支的子UI完成Hided初始化，再启用序列化为Showed的父UI。
+            childFirst.enabled = true;
+            yield return null;
+            childFirstParent.enabled = true;
+            yield return null;
+
+            // 两种Start顺序最终都应显示完整父子链。
+            Assert.AreEqual(UIState.Showed, parentFirst.State, "父先Start分支的父UI应完成显示");
+            Assert.AreEqual(UIState.Showed, parentFirstChild.State, "父先Start分支的子UI应完成显示");
+            Assert.AreEqual(UIState.Showed, childFirstParent.State, "子先Start分支的父UI应完成显示");
+            Assert.AreEqual(UIState.Showed, childFirst.State, "子先Start分支的子UI应完成显示");
+
+            // 初始化标记必须阻止任一分支因后续Start再次重复显示生命周期。
+            Assert.AreEqual(1, parentFirstShowCount, "父先Start分支的父UI显示行为应执行一次");
+            Assert.AreEqual(1, parentFirstChildShowCount, "父先Start分支的子UI显示行为应执行一次");
+            Assert.AreEqual(1, childFirstParentShowCount, "子先Start分支的父UI显示行为应执行一次");
+            Assert.AreEqual(1, childFirstShowCount, "子先Start分支的子UI显示行为应执行一次");
+        }
+
+        /// <summary>
+        ///  验证未完成Start且序列化为Showed的inactive子UI仍会随父显示恢复实际效果。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Show_ParentWithInactiveUninitializedShowedChild_ShouldRestoreChildOnce()
+        {
+            // 子UI保持未初始化状态，并模拟场景中已序列化为Showed但实际inactive的面板。
+            var container = CreateObject("InactiveInitialShowedRoot");
+            var parentUI = CreateUI("InactiveInitialShowedParent", container.transform);
+            var markedChild = CreateUI("InactiveInitialShowedChild", parentUI.transform);
+            markedChild.ShowWithParent = true;
+            SetUIBasePrivateField(markedChild, "state", UIState.Showed);
+            markedChild.gameObject.SetActive(false);
+            markedChild.enabled = true;
+
+            // 显示行为模拟常见的SetActive显示交互，并统计父级联实际执行次数。
+            var childShowCount = 0;
+            markedChild.ShowActions += () =>
+            {
+                childShowCount++;
+                markedChild.gameObject.SetActive(true);
+            };
+
+            // 父显示必须忽略未初始化子UI的状态短路，主动恢复其实际显示效果。
+            parentUI.Show();
+            var childStateAfterParentShow = markedChild.State;
+            var childActiveAfterParentShow = markedChild.gameObject.activeSelf;
+            yield return null;
+
+            // 后续Start应识别父级联已经接管初始化，不得再次重复显示生命周期。
+            Assert.AreEqual(UIState.Showed, childStateAfterParentShow, "父级联后子UI应完成Showed状态提交");
+            Assert.IsTrue(childActiveAfterParentShow, "父级联应恢复inactive子UI的实际显示效果");
+            Assert.AreEqual(1, childShowCount, "父级联和后续Start合计只应执行一次子UI显示行为");
+        }
+
+        /// <summary>
+        ///  验证父UI异步显示取消时会等待已启动子行为收口，并阻止父子提交After状态。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator ShowAsync_ParentCanceledDuringMarkedChild_ShouldCancelCascadeWithoutAfter()
+        {
+            // 单个标记子UI使用忽略令牌的处理器，验证父操作不会遗留后台子任务。
+            var container = CreateObject("CanceledMarkedChildRoot");
+            var parentUI = CreateUI("CanceledMarkedChildParent", container.transform);
+            var markedChild = CreateUI("CanceledMarkedChild", parentUI.transform);
+            markedChild.ShowWithParent = true;
+            var releaseChild = false;
+            var childStarted = false;
+            var parentAfterCount = 0;
+            var childAfterCount = 0;
+            markedChild.ShowAsyncActions += _ =>
+            {
+                childStarted = true;
+                return new JTask(() => releaseChild);
+            };
+            parentUI.AfterUIShowedEvent += () => parentAfterCount++;
+            markedChild.AfterUIShowedEvent += () => childAfterCount++;
+
+            // 启动父显示并等待子处理器挂起后取消调用方令牌。
+            using var tokenSource = new CancellationTokenSource();
+            Task<Exception> showOperation = CaptureException(parentUI.ShowAsync(tokenSource.Token));
+            yield return null;
+            tokenSource.Cancel();
+            yield return null;
+
+            // 先记录取消后的完成状态，再释放忽略令牌的处理器，避免留下永久等待项。
+            var completedBeforeChildReleased = showOperation.IsCompleted;
+            releaseChild = true;
+            yield return WaitForTask(showOperation);
+
+            // 父操作应等待已启动子行为收口，随后以标准取消异常结束。
+            Assert.IsTrue(childStarted, "标记子UI异步行为应在取消前启动");
+            Assert.IsFalse(completedBeforeChildReleased, "子行为未结束时父操作不得提前完成");
+            Assert.That(showOperation.Result, Is.InstanceOf<OperationCanceledException>(),
+                "父级联显示取消后应传播OperationCanceledException");
+
+            // 已取消的父子操作均不得提交Showed或触发After事件。
+            Assert.AreNotEqual(UIState.Showed, parentUI.State, "取消后的父UI不得提交Showed");
+            Assert.AreNotEqual(UIState.Showed, markedChild.State, "取消后的标记子UI不得提交Showed");
+            Assert.AreEqual(0, parentAfterCount, "取消后的父UI不得触发After事件");
+            Assert.AreEqual(0, childAfterCount, "取消后的标记子UI不得触发After事件");
+        }
+
+        /// <summary>
+        ///  验证新的父显示请求会取代旧父级联中的Showing子UI，而不是错误跳过该子UI。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Show_ParentUpdateDuringMarkedChildAsync_ShouldReplaceCascadeAndReachShown()
+        {
+            // 标记子UI的首轮异步行为保持挂起，用于在父级联尚未完成时发起同步更新。
+            var container = CreateObject("UpdatedParentCascadeRoot");
+            var parentUI = CreateUI("UpdatedParentCascadeParent", container.transform);
+            var markedChild = CreateUI("UpdatedParentCascadeChild", parentUI.transform);
+            markedChild.ShowWithParent = true;
+            var releaseOldChildAction = false;
+            var oldChildActionStarted = false;
+            var replacementSyncActionCount = 0;
+            markedChild.ShowAsyncActions += _ =>
+            {
+                oldChildActionStarted = true;
+                return new JTask(() => releaseOldChildAction);
+            };
+            markedChild.ShowActions += () => replacementSyncActionCount++;
+
+            // 启动首轮父ShowAsync并等待标记子UI进入ParentCascade Showing状态。
+            Task<Exception> oldParentOperation = CaptureException(parentUI.ShowAsync(CancellationToken.None));
+            yield return null;
+            var oldChildStartedBeforeUpdate = oldChildActionStarted;
+            var oldChildStateBeforeUpdate = markedChild.State;
+
+            // 同步父Show属于更新请求；无论显示过程是否抛出，都必须释放旧处理器门闩。
+            var updatedParentState = parentUI.State;
+            var updatedChildState = markedChild.State;
+            var updatedSyncActionCount = replacementSyncActionCount;
+            try
+            {
+                parentUI.Show();
+                updatedParentState = parentUI.State;
+                updatedChildState = markedChild.State;
+                updatedSyncActionCount = replacementSyncActionCount;
+            }
+            finally
+            {
+                // 释放忽略取消的旧处理器，避免失败路径遗留永久轮询任务。
+                releaseOldChildAction = true;
+            }
+
+            // 等待旧父操作按标准取消语义收口后再统一断言。
+            yield return WaitForTask(oldParentOperation);
+
+            // 更新前必须已经进入待替换的父级联Showing状态。
+            Assert.IsTrue(oldChildStartedBeforeUpdate, "首轮父级联应启动标记子UI异步行为");
+            Assert.AreEqual(UIState.Showing, oldChildStateBeforeUpdate, "首轮标记子UI应处于Showing");
+
+            // 同步更新必须真正重新显示旧ParentCascade子UI，而不是仅完成父UI自身。
+            Assert.AreEqual(UIState.Showed, updatedParentState, "更新后的父UI应完成同步显示");
+            Assert.AreEqual(UIState.Showed, updatedChildState,
+                "更新请求不得把旧ParentCascade Showing子UI永久跳过");
+            Assert.AreEqual(1, updatedSyncActionCount, "更新请求应执行一次标记子UI同步显示行为");
+
+            // 旧操作应传播取消，但不得覆盖更新请求已经提交的父子Showed状态。
+            Assert.That(oldParentOperation.Result, Is.InstanceOf<OperationCanceledException>(),
+                "被更新请求取代的旧父级联应传播OperationCanceledException");
+            Assert.AreEqual(UIState.Showed, parentUI.State, "旧操作收口后不得覆盖新父UI状态");
+            Assert.AreEqual(UIState.Showed, markedChild.State, "旧操作收口后不得覆盖新子UI状态");
+        }
+
+        /// <summary>
+        ///  验证显式子UI异步显示被取消后，新的父显示可以接管残留的Showing状态。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Show_ParentAfterExplicitChildCancellation_ShouldTakeOverMarkedChild()
+        {
+            // 显式显示标记子UI时让父UI异步行为保持挂起，以稳定构造子UI的Normal Showing状态。
+            var container = CreateObject("CanceledExplicitChildRoot");
+            var parentUI = CreateUI("CanceledExplicitChildParent", container.transform);
+            var markedChild = CreateUI("CanceledExplicitChild", parentUI.transform);
+            markedChild.ShowWithParent = true;
+            var releaseOldParentAction = false;
+            var oldParentActionStarted = false;
+            var replacementChildShowCount = 0;
+            parentUI.ShowAsyncActions += _ =>
+            {
+                oldParentActionStarted = true;
+                return new JTask(() => releaseOldParentAction);
+            };
+
+            // 旧显式请求使用独立异步处理器，避免回落到同步ShowActions污染接管计数。
+            markedChild.ShowAsyncActions += _ => JTask.CompletedTask;
+            markedChild.ShowActions += () => replacementChildShowCount++;
+
+            // 子UI通过公开API发起普通显示，并在等待父UI期间取消调用方令牌。
+            using var tokenSource = new CancellationTokenSource();
+            Task<Exception> oldChildOperation = CaptureException(markedChild.ShowAsync(tokenSource.Token));
+            yield return null;
+            var oldParentStartedBeforeCancellation = oldParentActionStarted;
+            var oldChildStateBeforeCancellation = markedChild.State;
+            tokenSource.Cancel();
+
+            // 取消已同步到链接令牌后，父同步显示必须能立即接管子UI；finally保证旧门闩总会释放。
+            var updatedParentState = parentUI.State;
+            var updatedChildState = markedChild.State;
+            var updatedChildShowCount = replacementChildShowCount;
+            try
+            {
+                parentUI.Show();
+                updatedParentState = parentUI.State;
+                updatedChildState = markedChild.State;
+                updatedChildShowCount = replacementChildShowCount;
+            }
+            finally
+            {
+                // 旧异步处理器忽略取消令牌，必须显式允许其完成才能安全收口。
+                releaseOldParentAction = true;
+            }
+
+            // 等待旧显式子显示传播标准取消异常，再检查新状态没有被旧操作覆盖。
+            yield return WaitForTask(oldChildOperation);
+
+            // 取消前必须已经构造出仍在执行的普通显示请求。
+            Assert.IsTrue(oldParentStartedBeforeCancellation, "显式子显示应在取消前启动父UI异步行为");
+            Assert.AreEqual(UIState.Showing, oldChildStateBeforeCancellation, "取消前显式子UI应处于Showing");
+
+            // 已取消的普通显示不再具有优先级，父级联应重新执行子UI同步显示行为。
+            Assert.AreEqual(UIState.Showed, updatedParentState, "后续父UI应完成同步显示");
+            Assert.AreEqual(UIState.Showed, updatedChildState, "父级联应接管已取消子UI残留的Showing状态");
+            Assert.AreEqual(1, updatedChildShowCount, "父级联接管时应执行一次子UI同步显示行为");
+
+            // 旧操作以取消结束，但不得覆盖更新请求已经提交的父子Showed状态。
+            Assert.That(oldChildOperation.Result, Is.InstanceOf<OperationCanceledException>(),
+                "被父级联取代的旧显式子显示应传播OperationCanceledException");
+            Assert.AreEqual(UIState.Showed, parentUI.State, "旧显式操作收口后不得覆盖新父UI状态");
+            Assert.AreEqual(UIState.Showed, markedChild.State, "旧显式操作收口后不得覆盖新子UI状态");
+        }
+
+        /// <summary>
         ///  验证异步隐藏接口继承隐藏生命周期基础接口，而不是显示生命周期接口。
         /// </summary>
         [Test]
@@ -478,6 +1028,23 @@ namespace JH.Test_UIManager
             // 回调中的State属性必须与事件报告的新状态完全一致。
             CollectionAssert.AreEqual(reportedStates, readableStates,
                 "OnStateChanged回调读取State时应得到已经提交的新状态");
+        }
+
+        /// <summary>
+        ///  设置UIBase仅供测试准备使用的私有序列化字段。
+        /// </summary>
+        /// <typeparam name="T">目标字段的值类型。</typeparam>
+        /// <param name="ui">需要配置的UIBase实例。</param>
+        /// <param name="fieldName">UIBase中的私有字段名称。</param>
+        /// <param name="value">写入目标字段的测试值。</param>
+        private static void SetUIBasePrivateField<T>(UIBase ui, string fieldName, T value)
+        {
+            // 只在测试程序集内反射现有私有配置，避免为了测试扩大运行时公开API。
+            var field = typeof(UIBase).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(field, $"UIBase中不存在测试所需字段：{fieldName}");
+
+            // 字段存在后写入精确测试值，类型不匹配应直接由反射异常暴露。
+            field.SetValue(ui, value);
         }
 
         /// <summary>
