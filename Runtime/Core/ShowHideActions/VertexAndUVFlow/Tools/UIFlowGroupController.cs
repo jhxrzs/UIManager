@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 #if ODIN_INSPECTOR
 using Sirenix.OdinInspector;
 #endif
@@ -186,13 +187,22 @@ namespace JH
             // 运行时Canvas或相机可能与编辑器保存值不同，主路径创建前必须重新解析。
             RefreshUICamera();
 
-            // 层级扫描只在初始化和子物体变化时执行，动画每帧复用稳定缓存。
+            // 启用时通过统一入口恢复直属成员、共享材质和当前组进度。
+            RefreshFlowHierarchy();
+        }
+
+        /// <summary>
+        ///  重新扫描当前直属流动网格并应用材质和现有组进度。
+        /// </summary>
+        private void RefreshFlowHierarchy()
+        {
+            // 完整扫描只发生在启用、显隐开始或明确层级变化时，不进入动画逐帧路径。
             RefreshOwnedFlowMeshEffects();
 
-            // 共享材质只在默认Graphic上安装，自定义材质由子组件自行保留。
+            // 新成员独立核对共享材质所有权，已经配置的自定义材质始终保留。
             SetMaterialPrefab();
 
-            // 初始进度也必须建立统一主路径，禁止子组件Awake先生成各自独立曲线。
+            // 成员变化会影响组中心和时间轴，按当前进度重新建立统一主路径。
             ApplyGroupFlow(effectAmount);
         }
 
@@ -237,6 +247,58 @@ namespace JH
         }
 
         /// <summary>
+        ///  同步隐藏开始前重新核对深层动态成员，再执行标准组隐藏进度。
+        /// </summary>
+        protected override void OnUIHide()
+        {
+            // 深层ToolItem换父不会通知Controller根节点，显隐边界必须主动完成一次全量校正。
+            RefreshFlowHierarchy();
+
+            // 基类负责把组进度同步推进到完全隐藏状态。
+            base.OnUIHide();
+        }
+
+        /// <summary>
+        ///  同步显示开始前重新核对深层动态成员，再执行标准组显示进度。
+        /// </summary>
+        protected override void OnUIShow()
+        {
+            // 新进入当前层级的深层Graphic需要在首个显示进度前加入统一组路径。
+            RefreshFlowHierarchy();
+
+            // 基类负责把组进度同步恢复到完全显示状态。
+            base.OnUIShow();
+        }
+
+        /// <summary>
+        ///  异步隐藏开始前重新核对深层动态成员，再播放标准组隐藏动画。
+        /// </summary>
+        /// <param name="token">当前UI隐藏操作的取消令牌。</param>
+        /// <returns>完整组隐藏动画任务。</returns>
+        protected override async JTask OnUIHideAsync(CancellationToken token)
+        {
+            // 每轮异步隐藏只扫描一次层级，后续Tween帧只执行无分配缓存所有权检查。
+            RefreshFlowHierarchy();
+
+            // 继续复用基类时长、缓动和取消传播语义。
+            await base.OnUIHideAsync(token);
+        }
+
+        /// <summary>
+        ///  异步显示开始前重新核对深层动态成员，再播放标准组显示动画。
+        /// </summary>
+        /// <param name="token">当前UI显示操作的取消令牌。</param>
+        /// <returns>完整组显示动画任务。</returns>
+        protected override async JTask OnUIShowAsync(CancellationToken token)
+        {
+            // 每轮异步显示只扫描一次层级，保证新成员从动画第一帧进入统一组路径。
+            RefreshFlowHierarchy();
+
+            // 继续复用基类时长、缓动和取消传播语义。
+            await base.OnUIShowAsync(token);
+        }
+
+        /// <summary>
         ///  判断一个流动网格是否由当前Controller直接负责。
         /// </summary>
         /// <param name="flowMeshEffect">当前层级查询到的候选流动网格。</param>
@@ -251,11 +313,48 @@ namespace JH
         }
 
         /// <summary>
+        ///  从稳定缓存中移除已经不再归当前Controller负责的流动网格。
+        /// </summary>
+        private void PruneUnownedFlowMeshEffects()
+        {
+            // 反向遍历允许原地移除，不创建临时列表也不会跳过连续失效成员。
+            for (var index = flowMeshEffects.Count - 1; index >= 0; index--)
+            {
+                // 缓存仍符合最近Controller归属时继续保留。
+                var flowMeshEffect = flowMeshEffects[index];
+                if (IsOwnedFlowMeshEffect(flowMeshEffect)) continue;
+
+                // 先移除缓存，清理网格时的同步回调不能让旧Controller再次消费该成员。
+                flowMeshEffects.RemoveAt(index);
+
+                // 只释放仍由当前Controller登记的旧状态，后来Controller的新状态不受影响。
+                ReleaseUnownedFlowMeshEffect(flowMeshEffect);
+            }
+        }
+
+        /// <summary>
+        ///  释放一个已经离开当前Controller层级的旧组状态。
+        /// </summary>
+        /// <param name="flowMeshEffect">已经从当前缓存移除的流动网格。</param>
+        private void ReleaseUnownedFlowMeshEffect(UIFlowMeshEffect flowMeshEffect)
+        {
+            // 已经销毁的组件只需要从托管缓存移除，不再访问Unity对象。
+            if (!flowMeshEffect) return;
+
+            // 组件仍登记当前旧Controller时恢复可见；内部所有权校验会保护后来Controller的新状态。
+            flowMeshEffect.DetachGroupController(this);
+        }
+
+        /// <summary>
         ///  重新扫描并缓存当前Controller直接负责的全部流动网格组件。
         /// </summary>
         private void RefreshOwnedFlowMeshEffects()
         {
-            // 清除旧引用但保留列表容量，频繁增删动态子物体时不会反复扩容。
+            // 复用排序列表暂存旧成员，刷新完成前仍可准确解除已经离组的临时状态。
+            sortedFlowMeshEffects.Clear();
+            sortedFlowMeshEffects.AddRange(flowMeshEffects);
+
+            // 清除活动缓存但保留容量，随后按当前稳定层级顺序完整重建。
             flowMeshEffects.Clear();
 
             // 扫描包含隐藏节点的完整层级，池化对象重新启用时已经拥有正确组状态。
@@ -273,6 +372,23 @@ namespace JH
                 // 当前候选通过所有权检查，可以参与统一主路径和材质下发。
                 flowMeshEffects.Add(candidate);
             }
+
+            // 逐个解除旧集合中已经不在当前直属层级的组件状态。
+            for (var index = 0; index < sortedFlowMeshEffects.Count; index++)
+            {
+                // 已销毁成员不再访问Unity对象。
+                var previousFlowMeshEffect = sortedFlowMeshEffects[index];
+                if (!previousFlowMeshEffect) continue;
+
+                // 仍在新集合中的成员继续由当前Controller负责。
+                if (flowMeshEffects.Contains(previousFlowMeshEffect)) continue;
+
+                // 离组成员只释放当前Controller旧状态，后来Controller的新状态不会被覆盖。
+                ReleaseUnownedFlowMeshEffect(previousFlowMeshEffect);
+            }
+
+            // 临时旧集合在方法退出前清空，避免长期保留已离场景对象引用。
+            sortedFlowMeshEffects.Clear();
         }
 
         /// <summary>
@@ -281,6 +397,9 @@ namespace JH
         /// <param name="linearProgress">Controller当前零到一线性进度。</param>
         private void ApplyGroupFlow(float linearProgress)
         {
+            // 每次消费缓存前执行无分配所有权校验，覆盖禁用组件错过层级回调的极端情况。
+            PruneUnownedFlowMeshEffects();
+
             // 排序只影响可选时间错峰，所有子物体仍然采样同一条空间主路径。
             var sortedFlowMeshEffects = SortFlowMeshEffects();
 
@@ -331,20 +450,18 @@ namespace JH
                 if (hasGroupPath)
                 {
                     flowMeshEffect.ApplyGroupFlow(
+                        this,
                         groupScreenPath,
                         configuration,
                         childProgress);
                     continue;
                 }
 
-                // 坐标转换失败时解除旧组路径，避免继续使用上一帧已经失效的控制点。
-                flowMeshEffect.ClearGroupFlow();
-
-                // 降级模式仍同步统一终点，组件可以安全恢复原有独立路径行为。
-                flowMeshEffect.EndScreenPoint = endScreenPoint;
-
-                // 降级模式保留相同时间错峰，不让异常Canvas导致动画节奏突变。
-                flowMeshEffect.EffectAmount = childProgress;
+                // 坐标转换失败时一次写入归属、终点和降级进度，禁止留下半更新状态。
+                flowMeshEffect.ApplyGroupFallback(
+                    this,
+                    endScreenPoint,
+                    childProgress);
             }
         }
 
@@ -547,14 +664,8 @@ namespace JH
             // 非活动Controller不主动改写子物体，下一次启用或进度变化会自然刷新。
             if (!isActiveAndEnabled) return;
 
-            // 层级已经变化，旧缓存必须先替换为当前直属组件集合。
-            RefreshOwnedFlowMeshEffects();
-
-            // 新增Graphic可能尚未安装共享材质，先执行材质所有权安全入口。
-            SetMaterialPrefab();
-
-            // 子物体增删会改变组中心，必须以当前进度重新计算唯一主路径。
-            ApplyGroupFlow(effectAmount);
+            // 直接子级变化复用完整层级刷新入口；深层换父会在显隐边界再次兜底核对。
+            RefreshFlowHierarchy();
         }
 
         /// <summary>
@@ -581,7 +692,7 @@ namespace JH
             foreach (var flowMeshEffect in flowMeshEffects)
             {
                 // 每个子组件只清理非序列化组状态，不改变材质和自身降级参数。
-                flowMeshEffect.ClearGroupFlow();
+                flowMeshEffect.DetachGroupController(this);
             }
 
             // 保留基类对UIBase显示和隐藏事件的正式取消订阅流程。

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 // ReSharper disable once CheckNamespace
@@ -1028,6 +1029,134 @@ namespace JH.Test_UIManager
             // 回调中的State属性必须与事件报告的新状态完全一致。
             CollectionAssert.AreEqual(reportedStates, readableStates,
                 "OnStateChanged回调读取State时应得到已经提交的新状态");
+        }
+
+        /// <summary>
+        ///  验证深层工具分支换父后，原Controller隐藏不会继续驱动已经进入背包的流动网格。
+        /// </summary>
+        [UnityTest]
+        public IEnumerator Hide_AfterNestedFlowBranchMovesOut_ShouldNotDriveMovedMeshEffect()
+        {
+            // 工具库根先保持未激活，所有序列化依赖都在Awake和OnEnable前完整写入。
+            var toolLibraryObject = new GameObject(
+                "FlowToolLibrary",
+                typeof(RectTransform),
+                typeof(Canvas),
+                typeof(CanvasGroup),
+                typeof(UIBase));
+            toolLibraryObject.SetActive(false);
+            _createdObjects.Add(toolLibraryObject);
+
+            // Controller挂在工具库根，Content作为稳定直接子级模拟实际Prefab结构。
+            var toolLibraryUI = toolLibraryObject.GetComponent<UIBase>();
+            var toolLibraryCanvasGroup = toolLibraryObject.GetComponent<CanvasGroup>();
+            var flowController = toolLibraryObject.AddComponent<UIFlowGroupController>();
+            var contentObject = new GameObject("Content", typeof(RectTransform));
+            contentObject.transform.SetParent(toolLibraryObject.transform, false);
+
+            // ToolItem是Content深层子级，Graphic继续位于工具根内部而不是直接挂在Controller下。
+            var toolItemObject = new GameObject("ToolItem", typeof(RectTransform));
+            toolItemObject.transform.SetParent(contentObject.transform, false);
+            var iconObject = new GameObject(
+                "Icon",
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(Image));
+            iconObject.transform.SetParent(toolItemObject.transform, false);
+            var flowMeshEffect = iconObject.AddComponent<UIFlowMeshEffect>();
+
+            // 使用UGUI内建共享材质，测试只关注归属变化并且不产生可选材质缺失警告。
+            var sharedMaterial = Graphic.defaultGraphicMaterial;
+            flowMeshEffect.materialPrefab = sharedMaterial;
+            SetUIFlowControllerPrivateField(flowController, "materialPrefab", sharedMaterial);
+
+            // EffectControllerBase的隐藏生命周期依赖显式UIBase和CanvasGroup缓存。
+            SetEffectControllerPrivateField(flowController, "uiBase", toolLibraryUI);
+            SetEffectControllerPrivateField(flowController, "canvasGroup", toolLibraryCanvasGroup);
+
+            // 非退化屏幕终点保证组路径能够建立并实际接管子组件进度。
+            flowController.EndScreenPoint = new Vector3(800f, 600f, 0f);
+
+            // 背包使用另一个Canvas根，换父后原工具库不再是Graphic的直接或间接父级。
+            var backpackObject = new GameObject(
+                "ConstructionBackpack",
+                typeof(RectTransform),
+                typeof(Canvas));
+            _createdObjects.Add(backpackObject);
+            var backpackContentObject = new GameObject("Content", typeof(RectTransform));
+            backpackContentObject.transform.SetParent(backpackObject.transform, false);
+
+            // 激活工具库并等待全部Awake、OnEnable和UIBase初始生命周期完成。
+            toolLibraryObject.SetActive(true);
+            yield return null;
+
+            // 工具库显示态必须把当前子组件稳定置于零进度。
+            toolLibraryUI.Show();
+            Assert.AreEqual(0f, flowMeshEffect.EffectAmount, 0.0001f,
+                "工具库显示后工具Graphic应处于完整可见进度");
+
+            // 只移动深层ToolItem根，Controller自身直接子级Content保持不变。
+            toolItemObject.transform.SetParent(backpackContentObject.transform, false);
+            yield return null;
+
+            // 隐藏原工具库会把自身组进度推进到一，但不得再改写已进背包的Graphic。
+            toolLibraryUI.Hide();
+            Assert.AreEqual(0f, flowMeshEffect.EffectAmount, 0.0001f,
+                "原Controller隐藏后不得让已换父到背包的工具Graphic消失");
+
+            // 再次显示工具库后把同一工具移回深层Content，模拟背包退回工具库的反向流程。
+            toolLibraryUI.Show();
+            toolItemObject.transform.SetParent(contentObject.transform, false);
+            yield return null;
+
+            // 隐藏边界必须重新发现深层新增成员，并由当前Controller统一推进到隐藏末帧。
+            toolLibraryUI.Hide();
+            Assert.AreEqual(1f, flowMeshEffect.EffectAmount, 0.0001f,
+                "工具移回后必须重新加入当前Controller并参与下一次隐藏");
+        }
+
+        /// <summary>
+        ///  设置EffectControllerBase仅供测试准备使用的受保护序列化字段。
+        /// </summary>
+        /// <typeparam name="T">目标字段的值类型。</typeparam>
+        /// <param name="controller">需要配置的流动组Controller。</param>
+        /// <param name="fieldName">EffectControllerBase中的字段名称。</param>
+        /// <param name="value">写入目标字段的测试值。</param>
+        private static void SetEffectControllerPrivateField<T>(
+            UIFlowGroupController controller,
+            string fieldName,
+            T value)
+        {
+            // 反射范围固定在运行时基类，测试不会扩大生产代码的公开配置接口。
+            var field = typeof(EffectControllerBase).GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(field, $"EffectControllerBase中不存在测试所需字段：{fieldName}");
+
+            // 字段存在后写入精确依赖，类型不匹配由反射异常直接暴露。
+            field.SetValue(controller, value);
+        }
+
+        /// <summary>
+        ///  设置UIFlowGroupController仅供测试准备使用的私有序列化字段。
+        /// </summary>
+        /// <typeparam name="T">目标字段的值类型。</typeparam>
+        /// <param name="controller">需要配置的流动组Controller。</param>
+        /// <param name="fieldName">UIFlowGroupController中的字段名称。</param>
+        /// <param name="value">写入目标字段的测试值。</param>
+        private static void SetUIFlowControllerPrivateField<T>(
+            UIFlowGroupController controller,
+            string fieldName,
+            T value)
+        {
+            // 只反射当前具体Controller私有字段，避免测试依赖编辑器序列化回调。
+            var field = typeof(UIFlowGroupController).GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(field, $"UIFlowGroupController中不存在测试所需字段：{fieldName}");
+
+            // 字段存在后写入精确依赖，类型不匹配由反射异常直接暴露。
+            field.SetValue(controller, value);
         }
 
         /// <summary>

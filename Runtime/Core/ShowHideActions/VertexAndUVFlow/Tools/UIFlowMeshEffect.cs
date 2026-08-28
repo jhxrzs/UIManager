@@ -190,6 +190,12 @@ namespace JH
         private bool hasGroupFlowPath;
 
         /// <summary>
+        ///  当前直接负责该组件的最近上级组控制器。
+        /// </summary>
+        [NonSerialized]
+        private UIFlowGroupController groupController;
+
+        /// <summary>
         ///  上级Controller在屏幕空间中创建且由全部子物体共享的主路径。
         /// </summary>
         [NonSerialized]
@@ -265,14 +271,19 @@ namespace JH
         /// <summary>
         ///  使用上级Controller提供的统一屏幕路径、网格参数和当前线性进度。
         /// </summary>
+        /// <param name="controller">本次下发组状态的唯一直属Controller。</param>
         /// <param name="screenPath">全部同组子物体共同采样的屏幕空间主路径。</param>
         /// <param name="configuration">全部同组子物体共同使用的不可变网格参数。</param>
         /// <param name="linearProgress">已经包含当前子物体时间错峰的零到一线性进度。</param>
         internal void ApplyGroupFlow(
+            UIFlowGroupController controller,
             in UIFlowPath2D screenPath,
             in UIFlowMeshConfiguration configuration,
             float linearProgress)
         {
+            // Controller已经在消费前核对实际父级，先登记当前唯一组状态所有者。
+            groupController = controller;
+
             // 记录当前由Controller负责，网格重建时禁止再次从自身字段派生另一条曲线。
             hasGroupFlowPath = true;
 
@@ -293,12 +304,18 @@ namespace JH
         }
 
         /// <summary>
-        ///  解除上级Controller路径，使组件恢复使用自身序列化参数独立运行。
+        ///  坐标转换失败时登记当前Controller并应用独立路径降级状态。
         /// </summary>
-        internal void ClearGroupFlow()
+        /// <param name="controller">本次下发降级状态的唯一直属Controller。</param>
+        /// <param name="screenEndPoint">当前Controller提供的屏幕空间终点。</param>
+        /// <param name="linearProgress">已经包含当前子物体时间错峰的零到一线性进度。</param>
+        internal void ApplyGroupFallback(
+            UIFlowGroupController controller,
+            Vector3 screenEndPoint,
+            float linearProgress)
         {
-            // 已经处于独立模式时不重复请求Canvas重建。
-            if (!hasGroupFlowPath) return;
+            // 即使统一路径暂时无法建立，离组清理仍必须知道当前唯一状态所有者。
+            groupController = controller;
 
             // 清除统一路径标记，下一帧重新从当前Graphic中心创建本地路径。
             hasGroupFlowPath = false;
@@ -309,7 +326,37 @@ namespace JH
             // 清空旧Controller参数，独立模式只读取组件自身序列化字段。
             groupConfiguration = default;
 
-            // 渲染状态发生切换后请求Graphic恢复独立路径网格。
+            // 降级路径仍使用Controller终点，Canvas恢复后不会出现目标点跳变。
+            endScreenPoint = screenEndPoint;
+
+            // 降级模式保留相同时间错峰，不让异常Canvas导致动画节奏突变。
+            effectAmount = Mathf.Clamp01(linearProgress);
+
+            // 归属、路径、终点和进度全部写完后只请求一次Canvas网格重建。
+            MarkVerticesDirty();
+        }
+
+        /// <summary>
+        ///  解除指定Controller归属并恢复完全可见的独立网格状态。
+        /// </summary>
+        /// <param name="controller">请求释放当前组件的旧Controller。</param>
+        internal void DetachGroupController(UIFlowGroupController controller)
+        {
+            // 迟到旧Controller不能清除后来Controller已经建立的归属。
+            if (groupController != controller) return;
+
+            // 先清空唯一归属，迟到的旧Controller随后不能再次通过所有权检查。
+            groupController = null;
+
+            // 旧组路径和配置不能继续参与离组后的网格重建。
+            hasGroupFlowPath = false;
+            groupFlowPathScreen = default;
+            groupConfiguration = default;
+
+            // 离开旧面板的Graphic必须完整显示，不能继承隐藏动画的中间帧或末帧。
+            effectAmount = 0f;
+
+            // 路径和进度同时恢复后只请求一次Canvas网格重建。
             MarkVerticesDirty();
         }
 
@@ -478,6 +525,11 @@ namespace JH
         {
             // 换父后Graphic引用不变，但Canvas和相机语义可能已经完全不同。
             InitializeReferences();
+
+            // 直接或间接父级变化后核对实际最近Controller，离开旧组时立即恢复可见状态。
+            var currentController = GetComponentInParent<UIFlowGroupController>(true);
+            if (groupController && groupController != currentController)
+                DetachGroupController(groupController);
 
             // 新父节点下重新生成屏幕终点对应的本地网格。
             MarkVerticesDirty();
