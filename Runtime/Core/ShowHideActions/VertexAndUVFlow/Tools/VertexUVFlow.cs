@@ -59,6 +59,16 @@ namespace JH
         private const float MinimumFlowDistance = 0.001f;
 
         /// <summary>
+        ///  S曲线控制点沿起终点方向所在的标准比例。
+        /// </summary>
+        private const float CurveControlDistanceRatio = 0.3f;
+
+        /// <summary>
+        ///  S曲线控制点垂直偏移占路径长度的安全上限。
+        /// </summary>
+        private const float MaximumCurveBendRatio = 0.28f;
+
+        /// <summary>
         ///  横向最多生成的细分段数。
         /// </summary>
         [SerializeField, Range(MinimumGridSegments, MaximumGridSegments)]
@@ -77,16 +87,16 @@ namespace JH
         private float flowDelay = 0.42f;
 
         /// <summary>
-        ///  贝塞尔路径弯曲量占起终点距离的比例。
+        ///  S曲线控制点垂直偏移占起终点距离的比例。
         /// </summary>
-        [SerializeField, Range(0f, 0.35f)]
-        private float curveBend = 0.1f;
+        [SerializeField, Range(0f, MaximumCurveBendRatio)]
+        private float curveBend = 0.24f;
 
         /// <summary>
-        ///  贝塞尔弯曲量的本地坐标上限。
+        ///  S曲线控制点垂直偏移的本地坐标上限。
         /// </summary>
         [SerializeField, Min(0f)]
-        private float maximumCurveBend = 110f;
+        private float maximumCurveBend = 140f;
 
         /// <summary>
         ///  横截面向终点收束时使用的幂指数。
@@ -313,7 +323,7 @@ namespace JH
             verticalSegments = Mathf.Clamp(
                 verticalSegments, MinimumGridSegments, MaximumGridSegments);
             flowDelay = Mathf.Clamp(flowDelay, 0f, 0.75f);
-            curveBend = Mathf.Clamp(curveBend, 0f, 0.35f);
+            curveBend = Mathf.Clamp(curveBend, 0f, MaximumCurveBendRatio);
             maximumCurveBend = Mathf.Max(0f, maximumCurveBend);
             funnelPower = Mathf.Clamp(funnelPower, 0.2f, 2f);
             fadeStart = Mathf.Clamp(fadeStart, 0f, 0.99f);
@@ -710,14 +720,23 @@ namespace JH
                 ? targetDelta / targetDistance
                 : Vector2.right;
 
-            // 曲线法线统一朝屏幕局部上方，往返移动不会突然翻转弯曲侧。
+            // 直接使用路径方向的左法线；反向移动时法线自动反转，能够沿同一条S曲线返回。
             var curveNormal = new Vector2(-targetDirection.y, targetDirection.x);
-            if (curveNormal.y < 0f) curveNormal = -curveNormal;
 
-            // 弯曲量同时受距离比例和绝对上限约束，长屏幕路径也不会绕出视野。
-            var bendAmount = Mathf.Min(targetDistance * curveBend, maximumCurveBend);
-            var firstControlPoint = sourceCenter + targetDelta * 0.28f + curveNormal * bendAmount;
-            var secondControlPoint = sourceCenter + targetDelta * 0.72f + curveNormal * bendAmount * 0.55f;
+            // 控制点偏移同时受配置比例、绝对值和路径比例约束，短路径不会过弯，长路径不会夸张。
+            var bendAmount = Mathf.Min(
+                targetDistance * curveBend,
+                maximumCurveBend,
+                targetDistance * MaximumCurveBendRatio);
+
+            // 第一个控制点位于路径法线正侧，形成S曲线前半段的第一处弯曲。
+            var firstControlPoint = sourceCenter + targetDelta * CurveControlDistanceRatio +
+                                    curveNormal * bendAmount;
+
+            // 第二个控制点放到路径法线负侧，使曲线越过中心线并形成明确的反向弯曲。
+            var secondControlPoint = sourceCenter +
+                                     targetDelta * (1f - CurveControlDistanceRatio) -
+                                     curveNormal * bendAmount;
 
             // 投影半径覆盖矩形在目标方向上的完整半宽，用于计算前沿和尾沿相位。
             var sourceExtents = sourceBounds.size * 0.5f;
