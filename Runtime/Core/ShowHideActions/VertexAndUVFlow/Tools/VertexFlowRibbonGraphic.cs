@@ -5,7 +5,7 @@ using UnityEngine.UI;
 namespace JH
 {
     /// <summary>
-    ///  沿<see cref="VertexFlowPath2D"/>生成具有柔和边缘的程序化UI Ribbon拖尾。
+    ///  沿<see cref="UIFlowPath2D"/>生成具有柔和边缘的程序化UI Ribbon拖尾。
     /// </summary>
     /// <remarks>
     ///  Ribbon使用固定二十四个纵向站点和四条横向Alpha通道，不保存历史帧，动态目标变化时
@@ -123,7 +123,7 @@ namespace JH
         ///  当前需要渲染的不可变S曲线路径。
         /// </summary>
         [NonSerialized]
-        private VertexFlowPath2D flowPath;
+        private UIFlowPath2D flowPath;
 
         /// <summary>
         ///  当前已经应用唯一时间缓动的路径进度。
@@ -241,7 +241,7 @@ namespace JH
         /// <param name="sourceRadius">源图形沿路径横截面方向的本地半径。</param>
         /// <param name="color">本次拖尾需要使用的业务颜色。</param>
         public void SetFlow(
-            in VertexFlowPath2D path,
+            in UIFlowPath2D path,
             float easedProgress,
             float sourceRadius,
             Color color)

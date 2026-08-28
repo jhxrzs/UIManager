@@ -1,12 +1,15 @@
 using System;
 using UnityEngine;
+using UnityEngine.Scripting.APIUpdating;
 
 namespace JH
 {
     /// <summary>
     ///  保存二维流动路径上一个采样点的位置、方向和曲率。
     /// </summary>
-    public readonly struct VertexFlowPose
+    [MovedFrom(true, sourceNamespace: "JH", sourceAssembly: "com.jh.uimanager.runtime",
+        sourceClassName: "VertexFlowPose")]
+    public readonly struct UIFlowPose
     {
         /// <summary>
         ///  创建一个不可变的二维路径姿态。
@@ -15,7 +18,7 @@ namespace JH
         /// <param name="tangent">路径前进方向的单位切线。</param>
         /// <param name="normal">切线逆时针旋转九十度后的单位法线。</param>
         /// <param name="curvature">当前采样点的绝对曲率。</param>
-        public VertexFlowPose(
+        public UIFlowPose(
             Vector2 position,
             Vector2 tangent,
             Vector2 normal,
@@ -58,7 +61,9 @@ namespace JH
     ///  对同一组端点反向创建路径时，两个控制点会严格交换，因此反向路径满足
     ///  <c>Reverse(t) == Forward(1 - t)</c>。
     /// </remarks>
-    public readonly struct VertexFlowPath2D
+    [MovedFrom(true, sourceNamespace: "JH", sourceAssembly: "com.jh.uimanager.runtime",
+        sourceClassName: "VertexFlowPath2D")]
+    public readonly struct UIFlowPath2D
     {
         /// <summary>
         ///  路径和导数计算使用的最小有效长度。
@@ -78,7 +83,7 @@ namespace JH
         /// <summary>
         ///  创建一条已经确定四个控制点的二维三次贝塞尔路径。
         /// </summary>
-        private VertexFlowPath2D(
+        private UIFlowPath2D(
             Vector2 start,
             Vector2 firstControlPoint,
             Vector2 secondControlPoint,
@@ -139,7 +144,7 @@ namespace JH
         /// <param name="maximumBend">控制点垂直偏移的本地坐标绝对上限。</param>
         /// <param name="maximumBendRatio">控制点垂直偏移占路径长度的安全上限。</param>
         /// <returns>可以正向或反向采样的不可变S曲线路径。</returns>
-        public static VertexFlowPath2D CreateReversibleS(
+        public static UIFlowPath2D CreateReversibleS(
             Vector2 start,
             Vector2 end,
             float controlDistanceRatio,
@@ -181,7 +186,46 @@ namespace JH
             var secondControlPoint = start + chord * (1f - safeControlRatio) -
                                      chordNormal * bendAmount;
 
-            return new VertexFlowPath2D(
+            return new UIFlowPath2D(
+                start,
+                firstControlPoint,
+                secondControlPoint,
+                end,
+                chordDirection,
+                chordLength);
+        }
+
+        /// <summary>
+        ///  使用调用方已经确定的四个控制点创建二维三次贝塞尔路径。
+        /// </summary>
+        /// <remarks>
+        ///  该入口用于把Controller坐标空间中的统一路径转换到每个Graphic本地空间，
+        ///  不会重新计算法线或弯曲量，因此所有子物体能够保持完全相同的主路径形状。
+        /// </remarks>
+        /// <param name="start">路径起点。</param>
+        /// <param name="firstControlPoint">路径的第一个控制点。</param>
+        /// <param name="secondControlPoint">路径的第二个控制点。</param>
+        /// <param name="end">路径终点。</param>
+        /// <returns>保留全部指定控制点的不可变二维三次贝塞尔路径。</returns>
+        public static UIFlowPath2D CreateCubic(
+            Vector2 start,
+            Vector2 firstControlPoint,
+            Vector2 secondControlPoint,
+            Vector2 end)
+        {
+            // 起终点差值用于建立投影和退化路径需要的稳定弦方向。
+            var chord = end - start;
+
+            // 缓存弦长，后续顶点形变和Ribbon无需重复计算平方根。
+            var chordLength = chord.magnitude;
+
+            // 起终点重合时使用固定右方向，禁止标准化零向量产生无效数值。
+            var chordDirection = chordLength > MinimumPathLength
+                ? chord / chordLength
+                : Vector2.right;
+
+            // 直接保存调用方控制点，统一主路径不会被每个子物体再次派生。
+            return new UIFlowPath2D(
                 start,
                 firstControlPoint,
                 secondControlPoint,
@@ -195,7 +239,7 @@ namespace JH
         /// </summary>
         /// <param name="pathProgress">尚未附加时间缓动的路径参数。</param>
         /// <returns>包含位置、单位切线、单位法线和绝对曲率的路径姿态。</returns>
-        public VertexFlowPose Evaluate(float pathProgress)
+        public UIFlowPose Evaluate(float pathProgress)
         {
             // 所有公开采样入口统一限制参数，异常调用不会越过曲线端点。
             var progress = Mathf.Clamp01(pathProgress);
@@ -221,7 +265,7 @@ namespace JH
                 curvature = Mathf.Abs(cross) / derivativeLengthCubed;
             }
 
-            return new VertexFlowPose(position, tangent, normal, curvature);
+            return new UIFlowPose(position, tangent, normal, curvature);
         }
 
         /// <summary>

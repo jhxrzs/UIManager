@@ -3,40 +3,49 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Scripting.APIUpdating;
 using UnityEngine.UI;
 
 namespace JH
 {
     /// <summary>
-    ///  顶点和UV流动动画管理器。
+    ///  通过UI网格连续形变实现流动收束动画。
     /// </summary>
     /// <remarks>
     ///  普通Image会在Canvas生成网格时被连续细分，并沿屏幕终点形成贝塞尔漏斗曲面。
     ///  <see cref="EffectAmount"/>接收调用方的线性进度，组件内部只应用一次平滑时间曲线。
+    ///  位于<see cref="UIFlowGroupController"/>下时使用Controller唯一主路径和统一参数，
+    ///  脱离Controller时继续使用自身序列化字段独立运行。
     /// </remarks>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Graphic))]
-    public class VertexUVFlow : MonoBehaviour, IMeshModifier
+    [MovedFrom(true, sourceNamespace: "JH", sourceAssembly: "com.jh.uimanager.runtime",
+        sourceClassName: "VertexUVFlow")]
+    public class UIFlowMeshEffect : MonoBehaviour, IMeshModifier
     {
         /// <summary>
         ///  普通Image默认的横向细分段数。
         /// </summary>
-        private const int DefaultHorizontalSegments = 24;
+        private const int DefaultHorizontalSegments =
+            UIFlowMeshConfiguration.DefaultHorizontalSegments;
 
         /// <summary>
         ///  普通Image默认的纵向细分段数。
         /// </summary>
-        private const int DefaultVerticalSegments = 16;
+        private const int DefaultVerticalSegments =
+            UIFlowMeshConfiguration.DefaultVerticalSegments;
 
         /// <summary>
         ///  网格至少保留的单轴细分段数。
         /// </summary>
-        private const int MinimumGridSegments = 4;
+        private const int MinimumGridSegments =
+            UIFlowMeshConfiguration.MinimumGridSegments;
 
         /// <summary>
         ///  防止误配置产生过大Canvas网格的单轴上限。
         /// </summary>
-        private const int MaximumGridSegments = 48;
+        private const int MaximumGridSegments =
+            UIFlowMeshConfiguration.MaximumGridSegments;
 
         /// <summary>
         ///  每个细分段覆盖的最小本地尺寸，避免小图标生成无意义的过密网格。
@@ -51,54 +60,64 @@ namespace JH
         /// <summary>
         ///  S曲线控制点沿起终点方向所在的标准比例。
         /// </summary>
-        private const float CurveControlDistanceRatio = 0.3f;
+        private const float CurveControlDistanceRatio =
+            UIFlowMeshConfiguration.DefaultCurveControlDistanceRatio;
 
         /// <summary>
         ///  S曲线控制点垂直偏移占路径长度的安全上限。
         /// </summary>
         private const float MaximumCurveBendRatio =
-            VertexFlowPath2D.DefaultMaximumBendRatio;
+            UIFlowMeshConfiguration.MaximumCurveBendRatio;
 
         /// <summary>
         ///  横向最多生成的细分段数。
         /// </summary>
-        [SerializeField, Range(MinimumGridSegments, MaximumGridSegments)]
+        [SerializeField]
+        [Range(MinimumGridSegments, MaximumGridSegments)]
+        [Tooltip("仅在未由UIFlowGroupController管理时使用。")]
         private int horizontalSegments = DefaultHorizontalSegments;
 
         /// <summary>
         ///  纵向最多生成的细分段数。
         /// </summary>
-        [SerializeField, Range(MinimumGridSegments, MaximumGridSegments)]
+        [SerializeField]
+        [Range(MinimumGridSegments, MaximumGridSegments)]
+        [Tooltip("仅在未由UIFlowGroupController管理时使用。")]
         private int verticalSegments = DefaultVerticalSegments;
 
         /// <summary>
         ///  背离终点的顶点相对前沿顶点的空间相位落后强度。
         /// </summary>
         [SerializeField, Range(0f, 0.75f)]
+        [Tooltip("仅在未由UIFlowGroupController管理时使用。")]
         private float flowDelay = 0.42f;
 
         /// <summary>
         ///  S曲线控制点垂直偏移占起终点距离的比例。
         /// </summary>
         [SerializeField, Range(0f, MaximumCurveBendRatio)]
+        [Tooltip("仅在未由UIFlowGroupController管理时使用。")]
         private float curveBend = 0.24f;
 
         /// <summary>
         ///  S曲线控制点垂直偏移的本地坐标上限。
         /// </summary>
         [SerializeField, Min(0f)]
+        [Tooltip("仅在未由UIFlowGroupController管理时使用。")]
         private float maximumCurveBend = 140f;
 
         /// <summary>
         ///  横截面向终点收束时使用的幂指数。
         /// </summary>
         [SerializeField, Range(0.2f, 2f)]
+        [Tooltip("仅在未由UIFlowGroupController管理时使用。")]
         private float funnelPower = 0.7f;
 
         /// <summary>
         ///  顶点透明度开始消失的曲线进度。
         /// </summary>
         [SerializeField, Range(0f, 0.99f)]
+        [Tooltip("仅在未由UIFlowGroupController管理时使用。")]
         private float fadeStart = 0.84f;
 
         /// <summary>
@@ -165,6 +184,24 @@ namespace JH
         private Material installedSharedFlowMaterial;
 
         /// <summary>
+        ///  当前组件是否正在使用上级Controller提供的统一主路径。
+        /// </summary>
+        [NonSerialized]
+        private bool hasGroupFlowPath;
+
+        /// <summary>
+        ///  上级Controller在屏幕空间中创建且由全部子物体共享的主路径。
+        /// </summary>
+        [NonSerialized]
+        private UIFlowPath2D groupFlowPathScreen;
+
+        /// <summary>
+        ///  上级Controller传入并由全部子物体共同使用的不可变网格参数。
+        /// </summary>
+        [NonSerialized]
+        private UIFlowMeshConfiguration groupConfiguration;
+
+        /// <summary>
         ///  缓存Graphic本轮生成的未变形顶点，避免细分和形变阶段重复读取。
         /// </summary>
         private readonly List<UIVertex> sourceVertices =
@@ -174,7 +211,7 @@ namespace JH
         ///  可以由多个Graphic共同使用的流动材质模板。
         /// </summary>
         /// <remarks>
-        ///  继续保留原有字段名，兼容已有Prefab和<see cref="VertexUVFlowController"/>赋值；
+        ///  继续保留原有字段名，兼容已有Prefab和<see cref="UIFlowGroupController"/>赋值；
         ///  只有Graphic使用defaultMaterial时才会安装该共享资产，自定义材质始终优先保留。
         /// </remarks>
         public Material materialPrefab;
@@ -226,6 +263,70 @@ namespace JH
         }
 
         /// <summary>
+        ///  使用上级Controller提供的统一屏幕路径、网格参数和当前线性进度。
+        /// </summary>
+        /// <param name="screenPath">全部同组子物体共同采样的屏幕空间主路径。</param>
+        /// <param name="configuration">全部同组子物体共同使用的不可变网格参数。</param>
+        /// <param name="linearProgress">已经包含当前子物体时间错峰的零到一线性进度。</param>
+        internal void ApplyGroupFlow(
+            in UIFlowPath2D screenPath,
+            in UIFlowMeshConfiguration configuration,
+            float linearProgress)
+        {
+            // 记录当前由Controller负责，网格重建时禁止再次从自身字段派生另一条曲线。
+            hasGroupFlowPath = true;
+
+            // 保存统一屏幕路径，避免不同RectTransform坐标空间重新计算出不同法线。
+            groupFlowPathScreen = screenPath;
+
+            // 保存同组唯一配置，子物体自身序列化参数仅作为脱离Controller时的降级值。
+            groupConfiguration = configuration;
+
+            // 统一路径终点同时作为单组件公开终点，外部检查仍能读取准确目标。
+            endScreenPoint = screenPath.End;
+
+            // 子物体保留可选时间错峰，但空间路径和形变参数始终来自同一Controller。
+            effectAmount = Mathf.Clamp01(linearProgress);
+
+            // 路径、参数和进度一次写完后只触发一次Canvas网格重建。
+            MarkVerticesDirty();
+        }
+
+        /// <summary>
+        ///  解除上级Controller路径，使组件恢复使用自身序列化参数独立运行。
+        /// </summary>
+        internal void ClearGroupFlow()
+        {
+            // 已经处于独立模式时不重复请求Canvas重建。
+            if (!hasGroupFlowPath) return;
+
+            // 清除统一路径标记，下一帧重新从当前Graphic中心创建本地路径。
+            hasGroupFlowPath = false;
+
+            // 释放已失效的屏幕路径值，避免调试器显示已经不再使用的旧控制点。
+            groupFlowPathScreen = default;
+
+            // 清空旧Controller参数，独立模式只读取组件自身序列化字段。
+            groupConfiguration = default;
+
+            // 渲染状态发生切换后请求Graphic恢复独立路径网格。
+            MarkVerticesDirty();
+        }
+
+        /// <summary>
+        ///  获取当前Graphic原始矩形中心对应的世界坐标。
+        /// </summary>
+        /// <returns>可用于Controller计算整个子物体组中心的世界坐标。</returns>
+        internal Vector3 GetSourceCenterWorldPoint()
+        {
+            // UI流动组件由RequireComponent保证位于RectTransform节点，异常节点使用Transform位置降级。
+            if (!(transform is RectTransform rectTransform)) return transform.position;
+
+            // 使用Rect中心而不是Pivot，非中心Pivot的子物体也能得到正确的视觉中心。
+            return rectTransform.TransformPoint(rectTransform.rect.center);
+        }
+
+        /// <summary>
         ///  获取或设置曲面最终收束位置的屏幕坐标。
         /// </summary>
         public Vector3 EndScreenPoint
@@ -269,18 +370,43 @@ namespace JH
         /// <param name="startPoint">调用方坐标空间中的路径起点。</param>
         /// <param name="targetPoint">与起点处于同一坐标空间的路径终点。</param>
         /// <returns>旧漏斗网格、刚性主体和Ribbon可以共同采样的不可变路径。</returns>
-        public VertexFlowPath2D CreatePath(
+        public UIFlowPath2D CreatePath(
             Vector2 startPoint,
             Vector2 targetPoint)
         {
-            // 曲线数学集中在VertexFlowPath2D，禁止不同表现层各自维护另一套控制点公式。
-            return VertexFlowPath2D.CreateReversibleS(
+            // 公开独立路径始终使用组件自身参数，不泄漏只在当前Controller层级有效的临时状态。
+            var configuration = CreateStandaloneConfiguration();
+
+            // 曲线数学集中在UIFlowPath2D，禁止不同表现层各自维护另一套控制点公式。
+            return UIFlowPath2D.CreateReversibleS(
                 startPoint,
                 targetPoint,
+                configuration.CurveControlDistanceRatio,
+                configuration.CurveBend,
+                configuration.MaximumCurveBend,
+                MaximumCurveBendRatio);
+        }
+
+        /// <summary>
+        ///  从当前组件的序列化降级字段创建一份经过边界保护的不可变配置。
+        /// </summary>
+        /// <returns>脱离Controller时供当前Graphic独立使用的网格形变参数。</returns>
+        private UIFlowMeshConfiguration CreateStandaloneConfiguration()
+        {
+            // 独立组件没有组队形偏移，收束指数仍使用中性值保证配置结构完整。
+            const float standaloneFormationCollapsePower = 1f;
+
+            // 构造函数统一执行运行时边界保护，外部脚本写入异常序列化值也不会污染网格。
+            return new UIFlowMeshConfiguration(
+                horizontalSegments,
+                verticalSegments,
+                flowDelay,
                 CurveControlDistanceRatio,
                 curveBend,
                 maximumCurveBend,
-                MaximumCurveBendRatio);
+                funnelPower,
+                fadeStart,
+                standaloneFormationCollapsePower);
         }
 
         private void Awake()
@@ -321,7 +447,7 @@ namespace JH
 
         private void OnDestroy()
         {
-            // 销毁前无条件解除TMP事件，禁止委托持有已经销毁的VertexUVFlow实例。
+            // 销毁前无条件解除TMP事件，禁止委托持有已经销毁的UIFlowMeshEffect实例。
             UnsubscribeTMPPreRenderText();
 
             // 只有本组件主动安装且仍未被外部替换的共享材质才恢复为Graphic默认材质。
@@ -461,7 +587,7 @@ namespace JH
         }
 
         /// <summary>
-        ///  解除当前VertexUVFlow持有的TMP渲染前事件。
+        ///  解除当前UIFlowMeshEffect持有的TMP渲染前事件。
         /// </summary>
         private void UnsubscribeTMPPreRenderText()
         {
@@ -519,7 +645,8 @@ namespace JH
                         colors[vertexIndex] = ApplyFade(
                             colors[vertexIndex],
                             flowContext.Progress,
-                            flowContext.UseVertexFade);
+                            flowContext.UseVertexFade,
+                            flowContext.Configuration.FadeStart);
                 }
             }
         }
@@ -666,8 +793,18 @@ namespace JH
             var bottomRight = FindClosestVertex(new Vector2(sourceBounds.xMax, sourceBounds.yMin));
 
             // 小图标按本地尺寸自动减少细分，大图标最多使用24×16默认上限。
-            var resolvedHorizontalSegments = ResolveSegmentCount(horizontalSegments, sourceBounds.width);
-            var resolvedVerticalSegments = ResolveSegmentCount(verticalSegments, sourceBounds.height);
+            // Controller模式读取统一配置，独立组件继续使用自身序列化降级参数。
+            var configuration = ResolveConfiguration();
+
+            // 横向细分由当前有效配置和Graphic实际尺寸共同限制。
+            var resolvedHorizontalSegments = ResolveSegmentCount(
+                configuration.HorizontalSegments,
+                sourceBounds.width);
+
+            // 纵向细分使用同一份有效配置，所有同组子物体保持一致的质量等级。
+            var resolvedVerticalSegments = ResolveSegmentCount(
+                configuration.VerticalSegments,
+                sourceBounds.height);
 
             // 同一帧全部顶点共享路径上下文，避免逐顶点重复做Canvas和贝塞尔准备计算。
             var flowContext = CreateFlowContext(sourceBounds);
@@ -700,7 +837,8 @@ namespace JH
                     vertex.color = ApplyFade(
                         vertex.color,
                         flowContext.Progress,
-                        flowContext.UseVertexFade);
+                        flowContext.UseVertexFade,
+                        flowContext.Configuration.FadeStart);
                     vertexHelper.AddVert(vertex);
                 }
             }
@@ -752,7 +890,8 @@ namespace JH
                 vertex.color = ApplyFade(
                     vertex.color,
                     flowContext.Progress,
-                    flowContext.UseVertexFade);
+                    flowContext.UseVertexFade,
+                    flowContext.Configuration.FadeStart);
 
                 // 将完成形变和淡出的顶点写回原索引位置。
                 vertexHelper.SetUIVertex(vertex, index);
@@ -766,13 +905,41 @@ namespace JH
         /// <returns>全部顶点共用的不可变形变上下文。</returns>
         private FlowContext CreateFlowContext(Rect sourceBounds)
         {
-            // 屏幕终点统一转换到当前Graphic本地坐标，避免Canvas缩放混入曲面计算。
+            // 当前有效配置在Controller模式来自组控制器，独立模式来自组件自身序列化字段。
+            var configuration = ResolveConfiguration();
+
+            // 原始网格中心是子物体队形偏移和单体内部顶点偏移的共同基准。
             var sourceCenter = sourceBounds.center;
+
+            // 屏幕终点转换到当前Graphic本地坐标，独立路径和异常降级都使用同一目标。
             var targetPoint = GetEndPointOS2D();
 
-            // 旧漏斗与新刚性主体、Ribbon共享完全相同的控制点、导数和反向路径语义。
-            var path = CreatePath(sourceCenter, targetPoint);
+            // 默认没有额外队形偏移，独立组件的路径起点就是自身网格中心。
+            var formationOffset = Vector2.zero;
+
+            // 优先把Controller唯一主路径转换到当前Graphic本地空间。
+            var usesGroupPath = TryCreateLocalGroupPath(
+                sourceCenter,
+                out var path,
+                out formationOffset);
+
+            // 不存在有效Controller路径时保持原有单组件独立运行能力。
+            if (!usesGroupPath)
+            {
+                // 独立路径仍复用同一UIFlowPath2D数学实现和反向采样语义。
+                path = UIFlowPath2D.CreateReversibleS(
+                    sourceCenter,
+                    targetPoint,
+                    configuration.CurveControlDistanceRatio,
+                    configuration.CurveBend,
+                    configuration.MaximumCurveBend,
+                    MaximumCurveBendRatio);
+            }
+
+            // Controller主路径的弦方向由全组共享，子物体不再按各自终点方向生成不同法线。
             var targetDirection = path.ChordDirection;
+
+            // 统一主路径自身的弦长用于退化保护，位于终点附近的单个子物体仍会跟随全组路径。
             var targetDistance = path.ChordLength;
 
             // 投影半径覆盖矩形在目标方向上的完整半宽，用于计算前沿和尾沿相位。
@@ -794,8 +961,107 @@ namespace JH
                 targetDistance,
                 projectionRadius,
                 path,
+                formationOffset,
+                configuration,
                 progress,
                 useSharedFlowShader);
+        }
+
+        /// <summary>
+        ///  解析当前帧应当使用的Controller统一配置或单组件降级配置。
+        /// </summary>
+        /// <returns>已经完成全部数值边界保护的不可变网格形变参数。</returns>
+        private UIFlowMeshConfiguration ResolveConfiguration()
+        {
+            // Controller模式必须忽略各子物体历史序列化差异，保证同组只有一套参数。
+            if (hasGroupFlowPath) return groupConfiguration;
+
+            // 独立组件继续支持工具转移动效等不经过组控制器的现有调用方。
+            return CreateStandaloneConfiguration();
+        }
+
+        /// <summary>
+        ///  把Controller提供的屏幕空间主路径转换到当前Graphic本地空间。
+        /// </summary>
+        /// <param name="sourceCenter">当前Graphic原始网格的本地中心。</param>
+        /// <param name="localPath">成功时返回保持四个统一控制点的本地主路径。</param>
+        /// <param name="formationOffset">当前子物体相对全组路径起点的本地队形偏移。</param>
+        /// <returns>Controller路径完整且四个控制点均可转换时返回true。</returns>
+        private bool TryCreateLocalGroupPath(
+            Vector2 sourceCenter,
+            out UIFlowPath2D localPath,
+            out Vector2 formationOffset)
+        {
+            // 所有失败出口都返回确定的默认值，禁止上一帧路径泄漏到当前网格。
+            localPath = default;
+            formationOffset = Vector2.zero;
+
+            // 未由Controller接管时直接进入单组件路径，不执行无意义坐标转换。
+            if (!hasGroupFlowPath) return false;
+
+            // UI网格坐标必须依附RectTransform；异常节点安全退回独立路径。
+            if (!(transform is RectTransform rectTransform)) return false;
+
+            // 统一路径起点转换到当前Graphic本地空间。
+            if (!TryConvertScreenPointToLocal(
+                    rectTransform,
+                    groupFlowPathScreen.Start,
+                    out var localStart))
+                return false;
+
+            // 第一个控制点原样转换，禁止按子物体方向重新计算弯曲法线。
+            if (!TryConvertScreenPointToLocal(
+                    rectTransform,
+                    groupFlowPathScreen.FirstControlPoint,
+                    out var localFirstControlPoint))
+                return false;
+
+            // 第二个控制点同样只做坐标变换，保持全组主路径几何一致。
+            if (!TryConvertScreenPointToLocal(
+                    rectTransform,
+                    groupFlowPathScreen.SecondControlPoint,
+                    out var localSecondControlPoint))
+                return false;
+
+            // 统一终点转换失败时不能使用部分路径，完整退回独立模式计算。
+            if (!TryConvertScreenPointToLocal(
+                    rectTransform,
+                    groupFlowPathScreen.End,
+                    out var localEnd))
+                return false;
+
+            // 使用四个已经确定的控制点创建本地主路径，不派生任何子物体专属曲线。
+            localPath = UIFlowPath2D.CreateCubic(
+                localStart,
+                localFirstControlPoint,
+                localSecondControlPoint,
+                localEnd);
+
+            // 初始队形偏移保证进度为零时每个Graphic严格停留在自己的原始中心。
+            formationOffset = sourceCenter - localStart;
+
+            // 四个控制点全部转换成功，当前帧可以使用统一主路径。
+            return true;
+        }
+
+        /// <summary>
+        ///  将一个屏幕坐标安全转换到指定Graphic的本地坐标。
+        /// </summary>
+        /// <param name="rectTransform">当前Graphic使用的RectTransform。</param>
+        /// <param name="screenPoint">Controller统一路径上的屏幕坐标。</param>
+        /// <param name="localPoint">转换成功后的Graphic本地坐标。</param>
+        /// <returns>Unity能够在当前Canvas平面上解析屏幕坐标时返回true。</returns>
+        private bool TryConvertScreenPointToLocal(
+            RectTransform rectTransform,
+            Vector2 screenPoint,
+            out Vector2 localPoint)
+        {
+            // 复用当前根Canvas相机，Overlay模式的空相机由Unity官方接口直接支持。
+            return RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                rectTransform,
+                screenPoint,
+                uiCamera,
+                out localPoint);
         }
 
         /// <summary>
@@ -855,18 +1121,27 @@ namespace JH
                 : 0.5f;
 
             // 幂相位保证所有顶点从第一帧起连续移动，并在终点帧严格同时收束。
-            var phaseExponent = 1f + (1f - frontFactor) * flowDelay * 3f;
+            var phaseExponent = 1f +
+                                (1f - frontFactor) *
+                                flowContext.Configuration.FlowDelay *
+                                3f;
             var localProgress = Mathf.Pow(flowContext.Progress, phaseExponent);
 
-            // 曲面中心沿屏幕方向的三次贝塞尔路径前进，避免直线缩放的机械感。
-            var pathCenter = flowContext.Path.EvaluatePosition(localProgress);
+            // 子物体相对全组起点的队形偏移随路径推进逐渐收束，终点严格归零。
+            var formationScale = Mathf.Pow(
+                Mathf.Max(0f, 1f - localProgress),
+                flowContext.Configuration.FormationCollapsePower);
+
+            // 全部子物体采样同一主路径，仅叠加逐渐归零的初始队形偏移。
+            var pathCenter = flowContext.Path.EvaluatePosition(localProgress) +
+                             flowContext.FormationOffset * formationScale;
 
             // 纵向长度和横向宽度分别收束，横向使用较软幂曲线形成漏斗截面。
             var longitudinalOffset = flowContext.TargetDirection * projectedOffset;
             var transverseOffset = sourceOffset - longitudinalOffset;
             var transverseScale = Mathf.Pow(
                 Mathf.Max(0f, 1f - localProgress),
-                funnelPower);
+                flowContext.Configuration.FunnelPower);
             var longitudinalScale = 1f - localProgress;
 
             // 所有顶点最终严格落在同一目标点，同时保留动画期间的连续面拓扑。
@@ -891,19 +1166,28 @@ namespace JH
         /// <summary>
         ///  在动效尾段柔和降低顶点透明度。
         /// </summary>
+        /// <param name="sourceColor">Graphic原始顶点颜色。</param>
+        /// <param name="progress">已经应用时间缓动的当前网格进度。</param>
+        /// <param name="useVertexFade">当前材质是否需要CPU顶点Alpha降级。</param>
+        /// <param name="currentFadeStart">当前有效配置指定的淡出起点。</param>
+        /// <returns>保留原始RGB并按需要调整Alpha的顶点颜色。</returns>
         private Color32 ApplyFade(
             Color32 sourceColor,
             float progress,
-            bool useVertexFade)
+            bool useVertexFade,
+            float currentFadeStart)
         {
             // 新版流体Shader已经使用同一进度淡出，CPU不能再叠乘第二次透明曲线。
             if (!useVertexFade) return sourceColor;
 
             // 尾段以前完整保留Graphic原始透明度和软边。
-            if (progress <= fadeStart) return sourceColor;
+            if (progress <= currentFadeStart) return sourceColor;
 
             // 透明度再次使用标准平滑插值，但不改变几何时间进度。
-            var fadeProgress = Mathf.InverseLerp(fadeStart, 1f, progress);
+            var fadeProgress = Mathf.InverseLerp(
+                currentFadeStart,
+                1f,
+                progress);
             var opacity = 1f - fadeProgress * fadeProgress * (3f - 2f * fadeProgress);
             sourceColor.a = (byte)Mathf.Clamp(
                 Mathf.RoundToInt(sourceColor.a * opacity),
@@ -1044,7 +1328,7 @@ namespace JH
         /// </summary>
         private void InitializeReferences()
         {
-            // VertexUVFlow只修改同一物体上的Graphic和CanvasRenderer。
+            // UIFlowMeshEffect只修改同一物体上的Graphic和CanvasRenderer。
             if (!graphic) graphic = GetComponent<Graphic>();
             if (!render) render = GetComponent<CanvasRenderer>();
 
@@ -1082,7 +1366,7 @@ namespace JH
         }
 
         /// <summary>
-        ///  在Graphic没有自定义材质时安装所有VertexUVFlow共同使用的流动材质。
+        ///  在Graphic没有自定义材质时安装所有UIFlowMeshEffect共同使用的流动材质。
         /// </summary>
         /// <remarks>
         ///  Graphic材质槽显示None时，<see cref="Graphic.material"/>仍会返回defaultMaterial，
@@ -1111,7 +1395,7 @@ namespace JH
             {
                 // 明确提示当前只缺少可选Shader表现，核心几何流动仍然可以正常执行。
                 Debug.LogWarning(
-                    $"VertexUVFlow“{name}”未配置共享流动材质，将保留原材质并使用CPU连续曲面。",
+                    $"UIFlowMeshEffect“{name}”未配置共享流动材质，将保留原材质并使用CPU连续曲面。",
                     this);
 
                 // CPU路径不需要创建或安装任何运行时材质。
@@ -1173,6 +1457,8 @@ namespace JH
             /// <param name="targetDistance">原始中心到收束点的弦长。</param>
             /// <param name="projectionRadius">原图形沿目标方向投影后的半径。</param>
             /// <param name="path">全部顶点共同使用的不可变S曲线路径。</param>
+            /// <param name="formationOffset">当前子物体相对统一主路径起点的本地队形偏移。</param>
+            /// <param name="configuration">当前帧使用的不可变网格形变参数。</param>
             /// <param name="progress">已经应用组件唯一时间缓动的当前帧进度。</param>
             /// <param name="useSharedFlowShader">当前材质是否从uv0.z读取独立流动进度。</param>
             public FlowContext(
@@ -1181,7 +1467,9 @@ namespace JH
                 Vector2 targetDirection,
                 float targetDistance,
                 float projectionRadius,
-                VertexFlowPath2D path,
+                UIFlowPath2D path,
+                Vector2 formationOffset,
+                UIFlowMeshConfiguration configuration,
                 float progress,
                 bool useSharedFlowShader)
             {
@@ -1202,6 +1490,12 @@ namespace JH
 
                 // 保存当前帧使用的不可变S曲线路径。
                 Path = path;
+
+                // 保存当前子物体相对统一主路径起点的初始队形偏移。
+                FormationOffset = formationOffset;
+
+                // 保存Controller统一参数或单组件降级参数。
+                Configuration = configuration;
 
                 // 保存已经应用唯一时间缓动的当前帧进度。
                 Progress = progress;
@@ -1238,7 +1532,17 @@ namespace JH
             /// <summary>
             ///  当前漏斗与刚性主体、Ribbon共同使用的不可变S曲线路径。
             /// </summary>
-            public VertexFlowPath2D Path { get; }
+            public UIFlowPath2D Path { get; }
+
+            /// <summary>
+            ///  当前子物体相对统一主路径起点的初始队形偏移。
+            /// </summary>
+            public Vector2 FormationOffset { get; }
+
+            /// <summary>
+            ///  当前帧全部顶点共同使用的不可变网格形变参数。
+            /// </summary>
+            public UIFlowMeshConfiguration Configuration { get; }
 
             /// <summary>
             ///  已经应用组件唯一时间曲线的本帧进度。
