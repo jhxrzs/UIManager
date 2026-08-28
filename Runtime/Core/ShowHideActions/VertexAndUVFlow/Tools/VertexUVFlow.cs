@@ -19,16 +19,6 @@ namespace JH
     public class VertexUVFlow : MonoBehaviour, IMeshModifier
     {
         /// <summary>
-        ///  Shader中的动效进度属性。
-        /// </summary>
-        private static readonly int Amount = Shader.PropertyToID("_EffectAmount");
-
-        /// <summary>
-        ///  Shader中的兼容终点UV属性。
-        /// </summary>
-        private static readonly int EndPointUV = Shader.PropertyToID("_EndPointUV");
-
-        /// <summary>
         ///  普通Image默认的横向细分段数。
         /// </summary>
         private const int DefaultHorizontalSegments = 24;
@@ -166,21 +156,13 @@ namespace JH
         private TMP_Text subscribedTMPText;
 
         /// <summary>
-        ///  当前组件独占并负责销毁的运行时材质实例。
+        ///  当前组件实际安装到Graphic上的共享材质资产引用。
         /// </summary>
+        /// <remarks>
+        ///  这里只记录共享资产所有权，不创建材质实例；用于模板变化或组件销毁时安全恢复。
+        /// </remarks>
         [NonSerialized]
-        private Material material;
-
-        /// <summary>
-        ///  Graphic进入动效前使用的材质，便于组件销毁时恢复。
-        /// </summary>
-        [NonSerialized]
-        private Material originalMaterial;
-
-        /// <summary>
-        ///  当前材质是否由本组件克隆并负责销毁。
-        /// </summary>
-        private bool ownsMaterial;
+        private Material installedSharedFlowMaterial;
 
         /// <summary>
         ///  缓存Graphic本轮生成的未变形顶点，避免细分和形变阶段重复读取。
@@ -189,12 +171,59 @@ namespace JH
             new(DefaultHorizontalSegments * DefaultVerticalSegments);
 
         /// <summary>
-        ///  动画材质预制体。
+        ///  可以由多个Graphic共同使用的流动材质模板。
         /// </summary>
         /// <remarks>
-        ///  继续保留原有字段名，兼容已有Prefab和<see cref="VertexUVFlowController"/>赋值。
+        ///  继续保留原有字段名，兼容已有Prefab和<see cref="VertexUVFlowController"/>赋值；
+        ///  只有Graphic使用defaultMaterial时才会安装该共享资产，自定义材质始终优先保留。
         /// </remarks>
         public Material materialPrefab;
+
+        /// <summary>
+        ///  更新可选共享流动材质，并在运行时重新核对当前Graphic的材质所有权。
+        /// </summary>
+        /// <param name="sharedMaterial">默认Graphic可以共同使用的流动材质；为空时使用CPU降级路径。</param>
+        internal void ApplySharedMaterial(Material sharedMaterial)
+        {
+            // 仅处理本组件主动安装的旧共享材质，用户后来替换的自定义材质绝不能恢复。
+            if (installedSharedFlowMaterial && installedSharedFlowMaterial != sharedMaterial)
+            {
+                // 当前材质仍是旧模板时恢复defaultMaterial，避免旧共享材质残留在Graphic上。
+                if (graphic && graphic.material == installedSharedFlowMaterial)
+                {
+                    // 空材质会让Graphic重新使用自身defaultMaterial。
+                    graphic.material = null;
+
+                    // 恢复默认材质后通知Canvas重新建立渲染状态。
+                    graphic.SetMaterialDirty();
+                }
+
+                // 模板变化后旧安装关系已经结束，后续初始化会按新模板重新判断。
+                installedSharedFlowMaterial = null;
+            }
+
+            // 保存控制器传入的新共享模板，保留原字段名和序列化兼容性。
+            materialPrefab = sharedMaterial;
+
+            // 编辑器只保存模板并刷新预览网格，禁止把运行时共享材质写入Prefab的Graphic字段。
+            if (!Application.isPlaying)
+            {
+                // 新模板可能改变Shader淡出路径，下一次Canvas更新必须重新生成顶点。
+                MarkVerticesDirty();
+
+                // 编辑器配置阶段不执行任何运行时材质替换。
+                return;
+            }
+
+            // 兼容父控制器Awake早于或晚于子组件Awake的两种不确定执行顺序。
+            InitializeReferences();
+
+            // 按Graphic当前材质重新选择自定义材质保留或共享材质安装路径。
+            InitializeSharedFlowMaterial();
+
+            // 材质能力变化后立即重新生成顶点进度或顶点Alpha路径。
+            MarkVerticesDirty();
+        }
 
         /// <summary>
         ///  获取或设置曲面最终收束位置的屏幕坐标。
@@ -212,9 +241,6 @@ namespace JH
 
                 // 继续维护旧版距离数据，保证现有序列化与外部检查逻辑不失效。
                 UpdateDistanceIndexFromCachedVertices();
-
-                // 兼容材质仍可读取与终点方向一致的边缘UV。
-                UpdateMaterialProperties();
             }
         }
 
@@ -234,9 +260,6 @@ namespace JH
 
                 // 交给Graphic标准重建流程，避免直接SetMesh破坏Mask或被下一次重建覆盖。
                 MarkVerticesDirty();
-
-                // Shader与CPU曲面必须共享同一个已经缓动的进度。
-                UpdateMaterialProperties();
             }
         }
 
@@ -265,8 +288,8 @@ namespace JH
             // 运行时动态创建和旧Prefab都从同一入口补全必要引用。
             InitializeReferences();
 
-            // 每个动效图标需要独占材质参数，禁止多个动画互相覆盖进度。
-            InitializeRuntimeMaterial();
+            // 仅在Graphic没有自定义材质时安装共享流动材质，保留原有特殊Shader效果。
+            InitializeSharedFlowMaterial();
 
             // Unity 6的TMP不经过Graphic网格修改器，必须使用其正式渲染前事件修改全部材质网格。
             SubscribeTMPPreRenderText();
@@ -301,21 +324,19 @@ namespace JH
             // 销毁前无条件解除TMP事件，禁止委托持有已经销毁的VertexUVFlow实例。
             UnsubscribeTMPPreRenderText();
 
-            // 组件被单独移除时先把Graphic恢复为进入动效前的材质。
-            if (graphic && ownsMaterial && graphic.material == material)
-                graphic.material = originalMaterial;
-
-            // 只销毁当前组件实际创建的材质实例，禁止误删项目资产。
-            if (ownsMaterial && material)
+            // 只有本组件主动安装且仍未被外部替换的共享材质才恢复为Graphic默认材质。
+            if (graphic && installedSharedFlowMaterial &&
+                graphic.material == installedSharedFlowMaterial)
             {
-                if (Application.isPlaying) Destroy(material);
-                else DestroyImmediate(material);
+                // 空材质会让Graphic重新使用自身defaultMaterial，不会破坏其他自定义材质。
+                graphic.material = null;
+
+                // 材质恢复后通知Canvas重新建立可批处理的渲染状态。
+                graphic.SetMaterialDirty();
             }
 
-            // 清空所有权，防止销毁阶段的迟到回调再次访问材质。
-            material = null;
-            originalMaterial = null;
-            ownsMaterial = false;
+            // 清空安装标记，防止销毁阶段的迟到回调重复恢复材质。
+            installedSharedFlowMaterial = null;
         }
 
         private void OnCanvasHierarchyChanged()
@@ -353,7 +374,7 @@ namespace JH
             // Prefab编辑阶段允许没有Canvas，引用入口会按Overlay语义安全降级。
             InitializeReferences();
 
-            // 编辑器校验只刷新网格，不克隆运行时材质对象。
+            // 编辑器校验只刷新网格，不把运行时共享材质写入Graphic序列化字段。
             MarkVerticesDirty();
         }
 
@@ -672,6 +693,9 @@ namespace JH
                     // 每个细分顶点都沿同一屏幕终点方向参与贝塞尔漏斗形变。
                     vertex.position = DeformPosition(vertex.position, flowContext);
 
+                    // 只有共享流动Shader需要从uv0.z读取当前Graphic自己的独立进度。
+                    vertex = ApplySharedShaderProgress(vertex, flowContext);
+
                     // 尾段使用顶点Alpha柔和收口，避免终点残留一个高亮像素。
                     vertex.color = ApplyFade(
                         vertex.color,
@@ -712,13 +736,25 @@ namespace JH
             var flowContext = CreateFlowContext(sourceBounds);
             for (var index = 0; index < vertexHelper.currentVertCount; index++)
             {
+                // 从Graphic当前原始拓扑中读取一个完整UI顶点。
                 var vertex = default(UIVertex);
+
+                // 保留位置、颜色、纹理坐标和自定义顶点通道的原始数据。
                 vertexHelper.PopulateUIVertex(ref vertex, index);
+
+                // 复杂Graphic只修改已有顶点位置，不替换其业务拓扑。
                 vertex.position = DeformPosition(vertex.position, flowContext);
+
+                // 自定义材质保持全部额外UV不变，共享流动Shader才占用uv0.z传递进度。
+                vertex = ApplySharedShaderProgress(vertex, flowContext);
+
+                // 自定义材质使用顶点Alpha降级，共享流动Shader由片元阶段执行淡出。
                 vertex.color = ApplyFade(
                     vertex.color,
                     flowContext.Progress,
                     flowContext.UseVertexFade);
+
+                // 将完成形变和淡出的顶点写回原索引位置。
                 vertexHelper.SetUIVertex(vertex, index);
             }
         }
@@ -747,9 +783,10 @@ namespace JH
             // 线性输入只在这里通过一次SmoothStep，CPU和Shader后续都复用该值。
             var progress = EvaluateFlowProgress(effectAmount);
 
-            // 配置了新版动效Shader时由Shader完成一次淡出，TMP或无材质降级路径才使用顶点Alpha。
-            var useVertexFade = !HasMaterialProgressProperty();
+            // 只有当前实际材质使用流动Shader时才读取顶点进度并在Shader中淡出。
+            var useSharedFlowShader = UsesSharedFlowShader();
 
+            // 将本帧全部顶点共用的曲线、进度和渲染路径保存为不可变上下文。
             return new FlowContext(
                 sourceCenter,
                 targetPoint,
@@ -758,7 +795,33 @@ namespace JH
                 projectionRadius,
                 path,
                 progress,
-                useVertexFade);
+                useSharedFlowShader);
+        }
+
+        /// <summary>
+        ///  将当前Graphic的独立流动进度写入共享Shader使用的基础UV空闲分量。
+        /// </summary>
+        /// <param name="vertex">保留原始位置、颜色和纹理数据的UI顶点。</param>
+        /// <param name="flowContext">包含共享Shader选择和本帧进度的不可变上下文。</param>
+        /// <returns>自定义材质保持不变；共享流动材质在uv0.z中携带进度的UI顶点。</returns>
+        private static UIVertex ApplySharedShaderProgress(
+            UIVertex vertex,
+            FlowContext flowContext)
+        {
+            // 自定义材质可能自行使用uv0.z，非流动Shader绝对不能覆盖该通道。
+            if (!flowContext.UseSharedFlowShader) return vertex;
+
+            // 复制基础UV完整四维数据，只修改普通UGUI纹理采样不会使用的z分量。
+            var uv0 = vertex.uv0;
+
+            // 每个Graphic的全部顶点写入相同进度，合批后仍能保持错峰动画互不干扰。
+            uv0.z = flowContext.Progress;
+
+            // 将修改后的UV写回顶点，同时保留xy纹理坐标和原始w分量。
+            vertex.uv0 = uv0;
+
+            // 返回能够直接写入VertexHelper的完整顶点。
+            return vertex;
         }
 
         /// <summary>
@@ -1019,115 +1082,66 @@ namespace JH
         }
 
         /// <summary>
-        ///  在运行时克隆并安装当前组件独占的动效材质。
+        ///  在Graphic没有自定义材质时安装所有VertexUVFlow共同使用的流动材质。
         /// </summary>
-        private void InitializeRuntimeMaterial()
+        /// <remarks>
+        ///  Graphic材质槽显示None时，<see cref="Graphic.material"/>仍会返回defaultMaterial，
+        ///  因此必须比较两者才能区分默认材质与用户显式配置的特殊材质。
+        /// </remarks>
+        private void InitializeSharedFlowMaterial()
         {
-            // 重复Awake或异常生命周期回调不得创建第二份材质。
-            if (material || ownsMaterial) return;
+            // 缺少Graphic时没有可安装材质的渲染目标，保持CPU路径安全返回。
+            if (!graphic) return;
 
-            // TMP必须保留自己的SDF材质和字体图集；它只使用本组件的全顶点形变降级路径。
-            if (graphic is TMP_Text)
-            {
-                originalMaterial = graphic.material;
-                return;
-            }
+            // TMP必须保留字体图集和SDF材质，只使用专用顶点回调完成CPU形变与淡出。
+            if (graphic is TMP_Text) return;
 
-            // 未配置特效材质时仍允许CPU曲面正常工作，并给出明确降级提示。
+            // 读取Graphic当前实际返回的材质，包括材质槽为空时自动提供的defaultMaterial。
+            var currentMaterial = graphic.material;
+
+            // 与defaultMaterial不同表示用户已经配置特殊材质，任何流动逻辑都不能覆盖。
+            var hasCustomMaterial =
+                currentMaterial && currentMaterial != graphic.defaultMaterial;
+
+            // 自定义材质完整保留；若它本身使用流动Shader，顶点通道仍会自动提供进度。
+            if (hasCustomMaterial) return;
+
+            // 没有共享材质模板时保留Graphic默认材质，并使用CPU曲面和顶点Alpha降级。
             if (!materialPrefab)
             {
+                // 明确提示当前只缺少可选Shader表现，核心几何流动仍然可以正常执行。
                 Debug.LogWarning(
-                    $"VertexUVFlow“{name}”未配置动效材质，将仅使用CPU连续曲面。",
+                    $"VertexUVFlow“{name}”未配置共享流动材质，将保留原材质并使用CPU连续曲面。",
                     this);
+
+                // CPU路径不需要创建或安装任何运行时材质。
                 return;
             }
 
-            // 保存原材质，组件被单独移除时可以恢复Graphic状态。
-            originalMaterial = graphic ? graphic.material : null;
+            // 直接安装同一材质资产，所有默认UI可以共享材质并保留UGUI合批条件。
+            graphic.material = materialPrefab;
 
-            // 每个实例独占Shader进度，多个工具影子或面板不会相互污染。
-            material = Instantiate(materialPrefab);
-            material.name = $"{materialPrefab.name} ({name} Runtime)";
-            material.hideFlags = HideFlags.HideAndDontSave;
-            ownsMaterial = true;
+            // 记录材质由当前组件安装，销毁组件时才能安全恢复为defaultMaterial。
+            installedSharedFlowMaterial = materialPrefab;
 
-            // Graphic会基于该材质继续生成Mask需要的Stencil变体。
-            if (graphic)
-            {
-                graphic.material = material;
-                graphic.SetMaterialDirty();
-            }
-
-            // 初始化实例的进度和兼容终点参数，避免显示材质资产中残留的预览值。
-            UpdateMaterialProperties();
+            // 材质变化后通知Canvas重新生成材质状态和Mask需要的Stencil变体。
+            graphic.SetMaterialDirty();
         }
 
         /// <summary>
-        ///  同步CPU曲线进度到基础材质和Mask生成的实际渲染材质。
+        ///  判断当前Graphic是否正在使用能够读取uv0.z独立进度的流动Shader。
         /// </summary>
-        private void UpdateMaterialProperties()
+        /// <returns>当前材质与共享模板使用同一Shader时返回true，否则返回false。</returns>
+        private bool UsesSharedFlowShader()
         {
-            // 与几何共享唯一SmoothStep结果，禁止Shader和CPU出现两套时间缓动。
-            var progress = EvaluateFlowProgress(effectAmount);
-            var endpointUV = CalculateCompatibleEndPointUV();
+            // Graphic或材质模板缺失时只能使用CPU顶点淡出路径。
+            if (!graphic || !materialPrefab) return false;
 
-            // 运行时优先写入组件独占材质；预览工具可使用自身HideAndDontSave材质。
-            var baseMaterial = material ? material : graphic ? graphic.material : null;
-            SetMaterialProperties(baseMaterial, progress, endpointUV);
+            // 读取Graphic基础材质而非materialForRendering，避免Mask临时材质影响能力判断。
+            var currentMaterial = graphic.material;
 
-            // Mask会生成Stencil材质副本，必须同步参数才能在裁剪层级内保持同一帧进度。
-            if (!graphic) return;
-            var renderingMaterial = graphic.materialForRendering;
-            if (renderingMaterial && renderingMaterial != baseMaterial)
-                SetMaterialProperties(renderingMaterial, progress, endpointUV);
-        }
-
-        /// <summary>
-        ///  判断当前基础材质是否支持由Shader处理动效进度和尾段淡出。
-        /// </summary>
-        private bool HasMaterialProgressProperty()
-        {
-            // 运行时使用独占实例，预览和降级路径使用Graphic当前材质。
-            var baseMaterial = material ? material : graphic ? graphic.material : null;
-            return baseMaterial && baseMaterial.HasProperty(Amount);
-        }
-
-        /// <summary>
-        ///  安全写入单个运行时或预览材质的动效参数。
-        /// </summary>
-        private static void SetMaterialProperties(
-            Material targetMaterial,
-            float progress,
-            Vector2 endpointUV)
-        {
-            if (!targetMaterial) return;
-
-            // 编辑态禁止修改持久化材质资产，但允许HideAndDontSave预览副本参与验证。
-            if (!Application.isPlaying &&
-                (targetMaterial.hideFlags & HideFlags.DontSave) == 0)
-                return;
-
-            if (targetMaterial.HasProperty(Amount))
-                targetMaterial.SetFloat(Amount, progress);
-            if (targetMaterial.HasProperty(EndPointUV))
-                targetMaterial.SetVector(EndPointUV, endpointUV);
-        }
-
-        /// <summary>
-        ///  将屏幕终点映射到源矩形最近边缘的零到一兼容UV。
-        /// </summary>
-        private Vector2 CalculateCompatibleEndPointUV()
-        {
-            var rectTransform = transform as RectTransform;
-            if (!rectTransform) return Vector2.zero;
-
-            var rect = rectTransform.rect;
-            if (rect.width <= Mathf.Epsilon || rect.height <= Mathf.Epsilon) return Vector2.zero;
-
-            var localPoint = GetEndPointOS2D();
-            return new Vector2(
-                Mathf.Clamp01(Mathf.InverseLerp(rect.xMin, rect.xMax, localPoint.x)),
-                Mathf.Clamp01(Mathf.InverseLerp(rect.yMin, rect.yMax, localPoint.y)));
+            // 同Shader的用户材质同样支持顶点进度，同时仍能保留用户自己的材质参数。
+            return currentMaterial && currentMaterial.shader == materialPrefab.shader;
         }
 
         /// <summary>
@@ -1153,6 +1167,14 @@ namespace JH
             /// <summary>
             ///  创建不可变的流动路径上下文。
             /// </summary>
+            /// <param name="sourceCenter">Graphic原始顶点边界的本地中心。</param>
+            /// <param name="targetPoint">屏幕终点转换到Graphic本地空间后的收束点。</param>
+            /// <param name="targetDirection">从原始中心指向收束点的标准化方向。</param>
+            /// <param name="targetDistance">原始中心到收束点的弦长。</param>
+            /// <param name="projectionRadius">原图形沿目标方向投影后的半径。</param>
+            /// <param name="path">全部顶点共同使用的不可变S曲线路径。</param>
+            /// <param name="progress">已经应用组件唯一时间缓动的当前帧进度。</param>
+            /// <param name="useSharedFlowShader">当前材质是否从uv0.z读取独立流动进度。</param>
             public FlowContext(
                 Vector2 sourceCenter,
                 Vector2 targetPoint,
@@ -1161,16 +1183,31 @@ namespace JH
                 float projectionRadius,
                 VertexFlowPath2D path,
                 float progress,
-                bool useVertexFade)
+                bool useSharedFlowShader)
             {
+                // 保存全部顶点共同使用的原始中心。
                 SourceCenter = sourceCenter;
+
+                // 保存当前Graphic本地空间中的最终收束点。
                 TargetPoint = targetPoint;
+
+                // 保存从原始中心指向收束点的标准化方向。
                 TargetDirection = targetDirection;
+
+                // 保存原始中心到收束点的弦长。
                 TargetDistance = targetDistance;
+
+                // 保存原图形在目标方向上的投影半径。
                 ProjectionRadius = projectionRadius;
+
+                // 保存当前帧使用的不可变S曲线路径。
                 Path = path;
+
+                // 保存已经应用唯一时间缓动的当前帧进度。
                 Progress = progress;
-                UseVertexFade = useVertexFade;
+
+                // 保存当前材质是否能够从基础UV通道读取独立流动进度。
+                UseSharedFlowShader = useSharedFlowShader;
             }
 
             /// <summary>
@@ -1209,9 +1246,14 @@ namespace JH
             public float Progress { get; }
 
             /// <summary>
-            ///  当前材质不支持动效淡出时是否使用顶点Alpha降级。
+            ///  当前材质是否使用uv0.z读取逐Graphic独立流动进度。
             /// </summary>
-            public bool UseVertexFade { get; }
+            public bool UseSharedFlowShader { get; }
+
+            /// <summary>
+            ///  当前材质不支持共享流动Shader时是否使用顶点Alpha降级。
+            /// </summary>
+            public bool UseVertexFade => !UseSharedFlowShader;
         }
     }
 }

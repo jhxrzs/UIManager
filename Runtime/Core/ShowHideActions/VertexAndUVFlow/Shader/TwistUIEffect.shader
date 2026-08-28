@@ -9,11 +9,11 @@ Shader "JH/UI/VertexAndUVFlow"
         // 使用标准UGUI颜色作为Sprite纹理和顶点颜色的附加乘数。
         _Color ("Tint", Color) = (1, 1, 1, 1)
 
-        // 保留旧控制器写入的终点UV，兼容既有材质和运行时代码。
-        _EndPointUV ("End Point UV", Vector) = (0, 0, 0, 0)
+        // 隐藏旧版终点UV属性，仅用于既有材质序列化兼容，不再参与运行时计算。
+        [HideInInspector] _EndPointUV ("Legacy End Point UV", Vector) = (0, 0, 0, 0)
 
-        // 控制由完整图标过渡到柔和消失状态的整体进度。
-        _EffectAmount ("Effect", Range(0, 1)) = 0
+        // 隐藏旧版逐材质进度属性，当前进度由每个Graphic通过uv0.z独立传入。
+        [HideInInspector] _EffectAmount ("Legacy Effect", Range(0, 1)) = 0
 
         // 控制两组屏幕空间波之间的交叉流动强度。
         _TwistIntensity ("Twist Intensity", Range(0, 2)) = 0.55
@@ -126,12 +126,6 @@ Shader "JH/UI/VertexAndUVFlow"
                 // 保存Alpha8等特殊Sprite纹理需要叠加的采样修正值。
                 half4 _TextureSampleAdd;
 
-                // 保留旧控制器写入的终点UV，不再用于大范围放射偏移。
-                float4 _EndPointUV;
-
-                // 保存当前动效进度。
-                float _EffectAmount;
-
                 // 保存交叉流场混合强度。
                 float _TwistIntensity;
 
@@ -175,8 +169,8 @@ Shader "JH/UI/VertexAndUVFlow"
                 // 保存Graphic颜色和CanvasRenderer顶点颜色。
                 half4 color : COLOR;
 
-                // 保存Sprite的原始纹理坐标。
-                float2 uv : TEXCOORD0;
+                // xy保存Sprite纹理坐标，z保存当前Graphic独立的流动进度。
+                float4 uv : TEXCOORD0;
 
                 // 声明GPU Instancing需要的实例ID。
                 UNITY_VERTEX_INPUT_INSTANCE_ID
@@ -191,8 +185,8 @@ Shader "JH/UI/VertexAndUVFlow"
                 // 保存已经叠加材质Tint的最终顶点颜色。
                 half4 color : COLOR;
 
-                // 保存用于读取Sprite的原始纹理坐标。
-                float2 uv : TEXCOORD0;
+                // xy保存Sprite纹理坐标，z保存无需逐材质实例即可插值的流动进度。
+                float3 uv : TEXCOORD0;
 
                 // 保存RectMask2D软裁剪计算需要的数据。
                 half4 mask : TEXCOORD1;
@@ -222,8 +216,8 @@ Shader "JH/UI/VertexAndUVFlow"
                 // 从裁剪空间位置生成透视正确的屏幕投影坐标。
                 output.screenPosition = ComputeScreenPos(output.positionCS);
 
-                // 保持原始Sprite UV，使高细分网格上的图标仍然连续且可辨认。
-                output.uv = input.uv;
+                // 保留Sprite UV并把CPU写入的独立进度传递到当前Graphic的片元。
+                output.uv = input.uv.xyz;
 
                 // 将材质Tint与CanvasRenderer顶点颜色合并。
                 output.color = input.color * _Color;
@@ -290,8 +284,8 @@ Shader "JH/UI/VertexAndUVFlow"
                 // 恢复单通道立体渲染当前片元对应的眼睛索引。
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(input);
 
-                // 限制外部控制器传入的动效进度，避免异常参数污染UV和透明度。
-                float progress = saturate(_EffectAmount);
+                // 限制当前Graphic顶点通道中的独立进度，合批后不同元素仍然互不串值。
+                float progress = saturate(input.uv.z);
 
                 // 通过插值后的投影坐标恢复当前片元对应的归一化屏幕坐标。
                 float2 screenUV = input.screenPosition.xy / max(input.screenPosition.w, 0.00001);
@@ -300,7 +294,7 @@ Shader "JH/UI/VertexAndUVFlow"
                 screenUV = UnityStereoTransformScreenSpaceTex(screenUV);
 
                 // 读取未经扰动的Sprite，确保主体轮廓和图集区域始终作为稳定基准。
-                half4 originalSample = tex2D(_MainTex, input.uv) + _TextureSampleAdd;
+                half4 originalSample = tex2D(_MainTex, input.uv.xy) + _TextureSampleAdd;
 
                 // 使用正弦包络使折射在起点和终点都自然归零，不留下突然跳变的尾帧。
                 float flowEnvelope = sin(progress * UNITY_PI);
@@ -320,7 +314,8 @@ Shader "JH/UI/VertexAndUVFlow"
                     abs(_MainTex_TexelSize.xy) * 2.0);
 
                 // 只在图标实体内部应用小范围折射，并在动效两端自动归零。
-                float2 refractedUV = input.uv + flow * safeAmplitude * flowEnvelope * opaqueCore;
+                float2 refractedUV =
+                    input.uv.xy + flow * safeAmplitude * flowEnvelope * opaqueCore;
 
                 // 读取受到屏幕空间流场轻微折射后的Sprite颜色。
                 half4 refractedSample = tex2D(_MainTex, refractedUV) + _TextureSampleAdd;

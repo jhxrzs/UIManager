@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 #if ODIN_INSPECTOR
@@ -76,12 +75,15 @@ namespace JH
 
 
         /// <summary>
-        /// 特效材质预制体
+        ///  默认Graphic可以共同使用的流动材质资产。
         /// </summary>
+        /// <remarks>
+        ///  该材质只提供可选Shader增强，已经配置自定义材质的Graphic始终保留原材质。
+        /// </remarks>
         [SerializeField] private Material materialPrefab;
 
         /// <summary>
-        ///  默认的材质名称
+        ///  默认共享流动材质的精确资源名称。
         /// </summary>
         private const string DefaultMaterialName = "JH_UI_TwistUIEffect.mat";
 
@@ -160,14 +162,15 @@ namespace JH
         }
 
         /// <summary>
-        ///  传递材质预制体到所有的动效控制组件
+        ///  将可选共享流动材质传递到所有动效控制组件。
         /// </summary>
         private void SetMaterialPrefab()
         {
-            if (materialPrefab == null) throw new Exception($" 没有特效材质 。");
+            // 每个VertexUVFlow自行判断Graphic是否已经拥有必须保留的自定义材质。
             foreach (var vertexUVFlow in TotalVertexUVFlows)
             {
-                vertexUVFlow.materialPrefab = materialPrefab;
+                // 通过统一入口消除父子Awake顺序差异，并保留每个Graphic已有的自定义材质。
+                vertexUVFlow.ApplySharedMaterial(materialPrefab);
             }
         }
 
@@ -215,16 +218,14 @@ namespace JH
                     }
                 }
 
-                // 默认查询后仍没有材质时禁止生成只能降级运行的不完整组件。
+                // 默认查询后仍没有材质时允许继续配置，核心流动会使用CPU和顶点Alpha路径。
                 if (!materialPrefab)
                 {
-                    // 输出包含控制器名称和失败原因的上下文错误，便于定位缺失资源。
-                    Debug.LogError(
-                        $"VertexUVFlowController“{name}”未找到默认特效材质，无法自动配置子物体。",
+                    // 输出明确降级提示，区分可选Shader增强缺失与核心组件配置失败。
+                    Debug.LogWarning(
+                        $"VertexUVFlowController“{name}”未找到默认共享流动材质，" +
+                        "将保留各Graphic原材质并使用CPU连续曲面。",
                         this);
-
-                    // 材质前置条件不成立，本次ContextMenu操作不再改变任何子物体。
-                    return;
                 }
 
                 // 查询完整层级中的Graphic，包含初始隐藏且运行时才会显示的视觉节点。
@@ -274,8 +275,8 @@ namespace JH
                     // 写入前记录组件状态，已有配置也必须能够恢复到操作前内容。
                     Undo.RecordObject(vertexUVFlow, undoName);
 
-                    // 每个VertexUVFlow统一使用当前控制器指定的特效材质模板。
-                    vertexUVFlow.materialPrefab = materialPrefab;
+                    // 通过统一入口传递模板；编辑器阶段不会把共享材质写入Graphic字段。
+                    vertexUVFlow.ApplySharedMaterial(materialPrefab);
 
                     // 同步屏幕终点，保证隐藏节点首次启用时拥有正确的收束位置。
                     vertexUVFlow.EndScreenPoint = endScreenPoint;
