@@ -66,7 +66,8 @@ namespace JH
         /// <summary>
         ///  S曲线控制点垂直偏移占路径长度的安全上限。
         /// </summary>
-        private const float MaximumCurveBendRatio = 0.28f;
+        private const float MaximumCurveBendRatio =
+            VertexFlowPath2D.DefaultMaximumBendRatio;
 
         /// <summary>
         ///  横向最多生成的细分段数。
@@ -237,6 +238,26 @@ namespace JH
                 // Shader与CPU曲面必须共享同一个已经缓动的进度。
                 UpdateMaterialProperties();
             }
+        }
+
+        /// <summary>
+        ///  使用当前组件序列化的弯曲参数创建一条可逆二维S曲线。
+        /// </summary>
+        /// <param name="startPoint">调用方坐标空间中的路径起点。</param>
+        /// <param name="targetPoint">与起点处于同一坐标空间的路径终点。</param>
+        /// <returns>旧漏斗网格、刚性主体和Ribbon可以共同采样的不可变路径。</returns>
+        public VertexFlowPath2D CreatePath(
+            Vector2 startPoint,
+            Vector2 targetPoint)
+        {
+            // 曲线数学集中在VertexFlowPath2D，禁止不同表现层各自维护另一套控制点公式。
+            return VertexFlowPath2D.CreateReversibleS(
+                startPoint,
+                targetPoint,
+                CurveControlDistanceRatio,
+                curveBend,
+                maximumCurveBend,
+                MaximumCurveBendRatio);
         }
 
         private void Awake()
@@ -712,31 +733,11 @@ namespace JH
             // 屏幕终点统一转换到当前Graphic本地坐标，避免Canvas缩放混入曲面计算。
             var sourceCenter = sourceBounds.center;
             var targetPoint = GetEndPointOS2D();
-            var targetDelta = targetPoint - sourceCenter;
-            var targetDistance = targetDelta.magnitude;
 
-            // 起终点重合时使用稳定默认方向，禁止归一化零向量产生NaN。
-            var targetDirection = targetDistance > MinimumFlowDistance
-                ? targetDelta / targetDistance
-                : Vector2.right;
-
-            // 直接使用路径方向的左法线；反向移动时法线自动反转，能够沿同一条S曲线返回。
-            var curveNormal = new Vector2(-targetDirection.y, targetDirection.x);
-
-            // 控制点偏移同时受配置比例、绝对值和路径比例约束，短路径不会过弯，长路径不会夸张。
-            var bendAmount = Mathf.Min(
-                targetDistance * curveBend,
-                maximumCurveBend,
-                targetDistance * MaximumCurveBendRatio);
-
-            // 第一个控制点位于路径法线正侧，形成S曲线前半段的第一处弯曲。
-            var firstControlPoint = sourceCenter + targetDelta * CurveControlDistanceRatio +
-                                    curveNormal * bendAmount;
-
-            // 第二个控制点放到路径法线负侧，使曲线越过中心线并形成明确的反向弯曲。
-            var secondControlPoint = sourceCenter +
-                                     targetDelta * (1f - CurveControlDistanceRatio) -
-                                     curveNormal * bendAmount;
+            // 旧漏斗与新刚性主体、Ribbon共享完全相同的控制点、导数和反向路径语义。
+            var path = CreatePath(sourceCenter, targetPoint);
+            var targetDirection = path.ChordDirection;
+            var targetDistance = path.ChordLength;
 
             // 投影半径覆盖矩形在目标方向上的完整半宽，用于计算前沿和尾沿相位。
             var sourceExtents = sourceBounds.size * 0.5f;
@@ -744,7 +745,7 @@ namespace JH
                                    Mathf.Abs(targetDirection.y) * sourceExtents.y;
 
             // 线性输入只在这里通过一次SmoothStep，CPU和Shader后续都复用该值。
-            var progress = EvaluateProgress(effectAmount);
+            var progress = EvaluateFlowProgress(effectAmount);
 
             // 配置了新版动效Shader时由Shader完成一次淡出，TMP或无材质降级路径才使用顶点Alpha。
             var useVertexFade = !HasMaterialProgressProperty();
@@ -755,8 +756,7 @@ namespace JH
                 targetDirection,
                 targetDistance,
                 projectionRadius,
-                firstControlPoint,
-                secondControlPoint,
+                path,
                 progress,
                 useVertexFade);
         }
@@ -796,12 +796,7 @@ namespace JH
             var localProgress = Mathf.Pow(flowContext.Progress, phaseExponent);
 
             // 曲面中心沿屏幕方向的三次贝塞尔路径前进，避免直线缩放的机械感。
-            var pathCenter = EvaluateCubicBezier(
-                flowContext.SourceCenter,
-                flowContext.FirstControlPoint,
-                flowContext.SecondControlPoint,
-                flowContext.TargetPoint,
-                localProgress);
+            var pathCenter = flowContext.Path.EvaluatePosition(localProgress);
 
             // 纵向长度和横向宽度分别收束，横向使用较软幂曲线形成漏斗截面。
             var longitudinalOffset = flowContext.TargetDirection * projectedOffset;
@@ -823,30 +818,11 @@ namespace JH
         /// </summary>
         /// <param name="linearProgress">调用方提供的零到一线性进度。</param>
         /// <returns>首尾速度为零的平滑进度。</returns>
-        private static float EvaluateProgress(float linearProgress)
+        public static float EvaluateFlowProgress(float linearProgress)
         {
             // 三次SmoothStep没有额外弹性或过冲，便于与外部线性JTween稳定组合。
             var progress = Mathf.Clamp01(linearProgress);
             return progress * progress * (3f - 2f * progress);
-        }
-
-        /// <summary>
-        ///  计算三次贝塞尔曲线上的二维点。
-        /// </summary>
-        private static Vector2 EvaluateCubicBezier(
-            Vector2 start,
-            Vector2 firstControl,
-            Vector2 secondControl,
-            Vector2 end,
-            float progress)
-        {
-            var inverseProgress = 1f - progress;
-            var inverseProgressSquared = inverseProgress * inverseProgress;
-            var progressSquared = progress * progress;
-            return start * (inverseProgressSquared * inverseProgress) +
-                   firstControl * (3f * inverseProgressSquared * progress) +
-                   secondControl * (3f * inverseProgress * progressSquared) +
-                   end * (progressSquared * progress);
         }
 
         /// <summary>
@@ -1092,7 +1068,7 @@ namespace JH
         private void UpdateMaterialProperties()
         {
             // 与几何共享唯一SmoothStep结果，禁止Shader和CPU出现两套时间缓动。
-            var progress = EvaluateProgress(effectAmount);
+            var progress = EvaluateFlowProgress(effectAmount);
             var endpointUV = CalculateCompatibleEndPointUV();
 
             // 运行时优先写入组件独占材质；预览工具可使用自身HideAndDontSave材质。
@@ -1183,8 +1159,7 @@ namespace JH
                 Vector2 targetDirection,
                 float targetDistance,
                 float projectionRadius,
-                Vector2 firstControlPoint,
-                Vector2 secondControlPoint,
+                VertexFlowPath2D path,
                 float progress,
                 bool useVertexFade)
             {
@@ -1193,8 +1168,7 @@ namespace JH
                 TargetDirection = targetDirection;
                 TargetDistance = targetDistance;
                 ProjectionRadius = projectionRadius;
-                FirstControlPoint = firstControlPoint;
-                SecondControlPoint = secondControlPoint;
+                Path = path;
                 Progress = progress;
                 UseVertexFade = useVertexFade;
             }
@@ -1225,14 +1199,9 @@ namespace JH
             public float ProjectionRadius { get; }
 
             /// <summary>
-            ///  三次贝塞尔曲线的第一个控制点。
+            ///  当前漏斗与刚性主体、Ribbon共同使用的不可变S曲线路径。
             /// </summary>
-            public Vector2 FirstControlPoint { get; }
-
-            /// <summary>
-            ///  三次贝塞尔曲线的第二个控制点。
-            /// </summary>
-            public Vector2 SecondControlPoint { get; }
+            public VertexFlowPath2D Path { get; }
 
             /// <summary>
             ///  已经应用组件唯一时间曲线的本帧进度。
