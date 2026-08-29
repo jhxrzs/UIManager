@@ -5,18 +5,18 @@ using UnityEngine;
 namespace JH
 {
     /// <summary>
-    /// 把UI的互斥组标记出来
+    ///  在Hierarchy中绘制UI互斥组、抢占优先级和显隐状态。
     /// </summary>
     [InitializeOnLoad]
     public class UIBaseHierarchyLabel
     {
         /// <summary>
-        /// GUIStyle
+        ///  Hierarchy右侧标签样式缓存。
         /// </summary>
         private static GUIStyle _labelStyle;
 
         /// <summary>
-        /// GUIStyle
+        ///  Hierarchy右侧标签样式。
         /// </summary>
         private static GUIStyle LabelStyle =>
             _labelStyle ??= new GUIStyle(EditorStyles.label)
@@ -25,9 +25,12 @@ namespace JH
                 alignment = TextAnchor.MiddleRight
             };
         
+        /// <summary>
+        ///  延迟注册Hierarchy绘制回调，确保编辑器API已完成初始化。
+        /// </summary>
         static UIBaseHierarchyLabel()
         {
-            // 确保在编辑器初始化完成后再注册
+            // 延迟一次调用后再订阅Hierarchy绘制事件。
             EditorApplication.delayCall += () =>
             {
 #if UNITY_6000_4_OR_NEWER
@@ -67,29 +70,35 @@ namespace JH
 #endif
 
         /// <summary>
-        ///  为包含UIBase的Hierarchy节点绘制互斥组和显隐状态。
+        ///  为包含UIBase的Hierarchy节点绘制互斥组、抢占优先级和显隐状态。
         /// </summary>
         /// <param name="gameObject">当前Hierarchy项对应的GameObject。</param>
         /// <param name="selectionRect">当前Hierarchy项的绘制区域。</param>
         private static void DrawHierarchyLabel(GameObject gameObject, Rect selectionRect)
         {
-            if (gameObject != null)
-            {
-                var uiBase = gameObject.GetComponent<UIBase>();
-                if (uiBase != null)
-                {
-                    // 获取 mutexGroup 的值
-                    int mutexGroupValue = new SerializedObject(uiBase).FindProperty("mutexGroup").intValue;
-                    string state = uiBase.State is UIState.Showed or UIState.Showing ? "S" : "H";
+            // 非GameObject项不存在UIBase配置，无需绘制。
+            if (!gameObject) return;
 
-                    // 在游戏物体名称右侧绘制 Label
-                    float labelWidth = 100;
-                    Rect labelRect = new Rect(selectionRect);
-                    labelRect.x = labelRect.xMax - labelWidth;
-                    labelRect.width = labelWidth;
-                    EditorGUI.LabelField(labelRect, mutexGroupValue + " " + state, LabelStyle);
-                }
-            }
+            // 只处理直接挂载UIBase的Hierarchy节点。
+            if (!gameObject.TryGetComponent<UIBase>(out var uiBase)) return;
+
+            // 使用同一份SerializedObject读取私有序列化字段，保持与Inspector数据一致。
+            var serializedUI = new SerializedObject(uiBase);
+            var mutexGroupValue = serializedUI.FindProperty("mutexGroup").intValue;
+            var mutexPriorityValue = serializedUI.FindProperty("mutexPriority").intValue;
+
+            // Showing和Showed均按显示生命周期标记，其余状态按隐藏标记。
+            var stateLabel = uiBase.State is UIState.Showed or UIState.Showing ? "S" : "H";
+            var labelContent = $"{mutexGroupValue}/{mutexPriorityValue} {stateLabel}";
+
+            // 在Hierarchy项右侧保留固定宽度绘制组号、优先级和状态。
+            const float labelWidth = 110f;
+            var labelRect = new Rect(selectionRect)
+            {
+                x = selectionRect.xMax - labelWidth,
+                width = labelWidth
+            };
+            EditorGUI.LabelField(labelRect, labelContent, LabelStyle);
         }
     }
 }

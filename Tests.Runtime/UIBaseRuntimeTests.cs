@@ -16,7 +16,7 @@ namespace JH.Test_UIManager
     /// <summary>
     ///  UIBase异步生命周期、取消传播和动态层级关系的PlayMode回归测试。
     /// </summary>
-    public class Test_UIBase
+    public partial class Test_UIBase
     {
         /// <summary>
         ///  单个异步用例允许等待的最长实时秒数。
@@ -1160,7 +1160,7 @@ namespace JH.Test_UIManager
         }
 
         /// <summary>
-        ///  设置UIBase仅供测试准备使用的私有序列化字段。
+        ///  设置UIBase仅供测试准备使用的私有字段。
         /// </summary>
         /// <typeparam name="T">目标字段的值类型。</typeparam>
         /// <param name="ui">需要配置的UIBase实例。</param>

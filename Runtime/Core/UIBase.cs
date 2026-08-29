@@ -18,7 +18,7 @@ namespace JH
         private enum UIShowMode
         {
             /// <summary>
-            ///  由公开API或序列化初态发起，并需要保证父UI链已经显示。
+            ///  由公开API或序列化初态发起，并按配置策略处理连续父UI链。
             /// </summary>
             Normal,
 
@@ -35,6 +35,12 @@ namespace JH
         private int mutexGroup;
 
         /// <summary>
+        ///  同父节点且同互斥组UI发生显示竞争时的抢占优先级。
+        /// </summary>
+        [SerializeField, Min(0), Tooltip("同父节点且同互斥组的显示抢占优先级，数值越大越优先")]
+        private int mutexPriority;
+
+        /// <summary>
         ///  是否固定UI层级。
         /// </summary>
         [SerializeField, Tooltip("固定UI层级")]
@@ -47,6 +53,12 @@ namespace JH
         private bool showWithParent;
 
         /// <summary>
+        ///  外部直接显示当前UI时处理连续父UI链的策略。
+        /// </summary>
+        [SerializeField, Tooltip("外部直接显示当前UI时处理连续父UI链的策略")]
+        private UIParentShowPolicy parentShowPolicy;
+
+        /// <summary>
         ///  当前UI的状态。
         /// </summary>
         [SerializeField, Tooltip("当前UI状态")]
@@ -56,6 +68,16 @@ namespace JH
         ///  当前UI的序列化显隐状态是否已经由一次实际显隐流程接管初始化。
         /// </summary>
         private bool _isUIStateInitialized;
+
+        /// <summary>
+        ///  严格Showed序列化初态是否正在等待启用父UI完成初始化。
+        /// </summary>
+        private bool _isStrictInitialShowDeferred;
+
+        /// <summary>
+        ///  严格初态延后协程版本，用于失活恢复时淘汰旧协程。
+        /// </summary>
+        private int _strictInitialShowDeferredVersion;
 
         /// <summary>
         ///  当前异步显隐操作的取消源。
@@ -78,9 +100,24 @@ namespace JH
         private int _showModeOperationVersion = -1;
 
         /// <summary>
+        ///  当前父级联显示请求的直接发起父UI。
+        /// </summary>
+        private UIBase _currentParentCascadeSource;
+
+        /// <summary>
+        ///  当前父级联来源父UI发起显示事务时的显隐操作版本。
+        /// </summary>
+        private int _currentParentCascadeSourceOperationVersion = -1;
+
+        /// <summary>
         ///  当前仍在执行显示生命周期的显隐操作版本。
         /// </summary>
         private int _activeShowOperationVersion = -1;
+
+        /// <summary>
+        ///  当前仍在执行隐藏生命周期的显隐操作版本。
+        /// </summary>
+        private int _activeHideOperationVersion = -1;
 
         /// <summary>
         ///  当前的同步隐藏行为委托。
@@ -173,6 +210,26 @@ namespace JH
         }
 
         /// <summary>
+        ///  外部直接显示当前UI时处理连续父UI链的策略。
+        /// </summary>
+        public UIParentShowPolicy ParentShowPolicy
+        {
+            get => parentShowPolicy;
+            set => parentShowPolicy = value is UIParentShowPolicy.RequireParentChainShowedForDirectShow
+                ? value
+                : UIParentShowPolicy.AutoShowParentChain;
+        }
+
+        /// <summary>
+        ///  同父节点且同互斥组UI发生显示竞争时的抢占优先级。
+        /// </summary>
+        public int MutexPriority
+        {
+            get => mutexPriority;
+            set => mutexPriority = Mathf.Max(0, value);
+        }
+
+        /// <summary>
         ///  当前UI状态。
         /// </summary>
         public UIState State
@@ -191,12 +248,35 @@ namespace JH
         }
 
         /// <summary>
+        ///  Unity对象重新启用时恢复可能因GameObject失活而停止的严格初态延后协程。
+        /// </summary>
+        protected virtual void OnEnable()
+        {
+            // 已被公开API或父级联接管的UI不再需要恢复序列化初态协程。
+            if (_isUIStateInitialized)
+            {
+                _isStrictInitialShowDeferred = false;
+                return;
+            }
+
+            // 首次OnEnable发生在Start之前，只有已经进入延后状态的UI才需要续接。
+            if (_isStrictInitialShowDeferred) DeferStrictInitialShow();
+        }
+
+        /// <summary>
         ///  Unity首次启用组件时初始化序列化状态。
         /// </summary>
         protected virtual void Start()
         {
             // Start前已经由公开API或父UI执行显隐流程时，不再重复派发初始化生命周期。
             if (_isUIStateInitialized) return;
+
+            // 启用中的父UI尚未执行Start时，延后严格Showed初态以消除父子Start顺序差异。
+            if (ShouldDeferStrictInitialShow())
+            {
+                DeferStrictInitialShow();
+                return;
+            }
 
             // 先提交初始化标记，阻止初始化期间的父子递归再次进入Start初始化语义。
             _isUIStateInitialized = true;
@@ -212,6 +292,11 @@ namespace JH
         {
             // 已经显示时无需重复执行生命周期。
             if (State is UIState.Showed) return;
+
+            // 父链未就绪或更高优先级同组兄弟活跃时，本次请求保持零副作用拒绝。
+            if (!CanScheduleShow(UIShowMode.Normal)) return;
+
+            // 通过统一普通显示入口执行完整同步生命周期。
             ShowNotCheckState(UIShowMode.Normal);
         }
 
@@ -220,8 +305,15 @@ namespace JH
         /// </summary>
         public void Hide()
         {
-            // 已经隐藏时无需重复执行生命周期。
-            if (State is UIState.Hided) return;
+            // 已隐藏且没有处于入口重入窗口的显示预约时无需执行生命周期。
+            if (State is UIState.Hided)
+            {
+                // Hided状态下的有效显示预约只需失效版本并取消令牌，不派发虚假隐藏事件。
+                if (IsCurrentShowAction()) CancelHidedShowReservation();
+                return;
+            }
+
+            // 其余可见生命周期通过统一同步隐藏入口完整收口。
             HideNotCheckState();
         }
 
@@ -237,6 +329,9 @@ namespace JH
             ThrowIfShowHideCancellationRequested(cancellationToken);
             if (State is UIState.Showed) return;
 
+            // 正常仲裁拒绝不属于异常，且不得取消当前操作或改变任何UI状态。
+            if (!CanScheduleShow(UIShowMode.Normal)) return;
+
             // 取消异常属于公开契约的一部分，不在此处吞掉。
             await ShowNotCheckStateAsync(cancellationToken, UIShowMode.Normal);
         }
@@ -244,7 +339,9 @@ namespace JH
         /// <summary>
         ///  由直接父UI同步显示当前UI，并阻止当前UI再次向上显示父链。
         /// </summary>
-        private void ShowFromParent()
+        /// <param name="cascadeParent">发起本次直接子UI级联显示的父UI。</param>
+        /// <param name="cascadeParentOperationVersion">来源父UI本轮显示事务的显隐操作版本。</param>
+        private void ShowFromParent(UIBase cascadeParent, int cascadeParentOperationVersion)
         {
             // 已初始化且已显示的子UI无需重复执行；未初始化初态仍需补齐实际显示效果。
             if (_isUIStateInitialized && State is UIState.Showed) return;
@@ -252,16 +349,28 @@ namespace JH
             // 显式Showing请求必须继续等待当前父UI，不能由默认级联反向取代。
             if (State is UIState.Showing && IsCurrentNormalShowAction()) return;
 
+            // 父级联绕过父链准入，但仍服从同组兄弟的数值显示优先级。
+            if (!CanScheduleShow(
+                    UIShowMode.ParentCascade,
+                    cascadeParent,
+                    cascadeParentOperationVersion)) return;
+
             // 父级联入口只省略向上显示父链，当前UI自身生命周期保持完整。
-            ShowNotCheckState(UIShowMode.ParentCascade);
+            ShowNotCheckState(
+                UIShowMode.ParentCascade,
+                cascadeParent,
+                cascadeParentOperationVersion);
         }
 
         /// <summary>
         ///  由直接父UI异步显示当前UI，并阻止当前UI再次向上显示父链。
         /// </summary>
         /// <param name="cancellationToken">直接父UI本轮显示操作的取消令牌。</param>
+        /// <param name="cascadeParent">发起本次直接子UI级联显示的父UI。</param>
+        /// <param name="cascadeParentOperationVersion">来源父UI本轮显示事务的显隐操作版本。</param>
         /// <returns>当前UI完整显示生命周期对应的异步任务。</returns>
-        private async JTask ShowFromParentAsync(CancellationToken cancellationToken)
+        private async JTask ShowFromParentAsync(CancellationToken cancellationToken, UIBase cascadeParent,
+            int cascadeParentOperationVersion)
         {
             // 父操作预取消时不得改变子UI状态或Start初始化标记。
             ThrowIfShowHideCancellationRequested(cancellationToken);
@@ -272,8 +381,18 @@ namespace JH
             // 显式Showing请求必须继续等待当前父UI，不能由默认级联反向取代。
             if (State is UIState.Showing && IsCurrentNormalShowAction()) return;
 
+            // 父级联绕过父链准入，但仍服从同组兄弟的数值显示优先级。
+            if (!CanScheduleShow(
+                    UIShowMode.ParentCascade,
+                    cascadeParent,
+                    cascadeParentOperationVersion)) return;
+
             // 子UI使用链接令牌完成自身生命周期，但不再递归等待父UI。
-            await ShowNotCheckStateAsync(cancellationToken, UIShowMode.ParentCascade);
+            await ShowNotCheckStateAsync(
+                cancellationToken,
+                UIShowMode.ParentCascade,
+                cascadeParent,
+                cascadeParentOperationVersion);
         }
 
         /// <summary>
@@ -286,7 +405,12 @@ namespace JH
         {
             // 预取消必须在任何状态和事件副作用发生前被观察。
             ThrowIfShowHideCancellationRequested(cancellationToken);
-            if (State is UIState.Hided) return;
+            if (State is UIState.Hided)
+            {
+                // 异步显示尚处于Hided预约窗口时只取消预约，原显示任务会传播更新取消。
+                if (IsCurrentShowAction()) CancelHidedShowReservation();
+                return;
+            }
 
             // 取消异常属于公开契约的一部分，不在此处吞掉。
             await HideNotCheckStateAsync(cancellationToken);
@@ -444,16 +568,17 @@ namespace JH
         ///  执行不带状态短路的同步显示流程。
         /// </summary>
         /// <param name="showMode">当前显示请求的来源模式。</param>
-        private void ShowNotCheckState(UIShowMode showMode)
+        /// <param name="parentCascadeSource">父级联请求的直接发起父UI；普通显示传null。</param>
+        /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；普通显示传-1。</param>
+        private void ShowNotCheckState(UIShowMode showMode, UIBase parentCascadeSource = null,
+            int parentCascadeSourceOperationVersion = -1)
         {
-            // 先登记新版本再取消旧异步操作。
-            var operationVersion = BeginSynchronousShowHideAction();
+            // 新版本必须在取消旧异步操作前登记显示预约，使取消回调能够参与兄弟优先级仲裁。
+            var operationVersion = BeginSynchronousShowHideAction(
+                showMode,
+                parentCascadeSource,
+                parentCascadeSourceOperationVersion);
 
-            // 只有当前版本仍有效时才登记来源，避免取消回调重入让旧流程覆盖新来源。
-            RegisterCurrentShowMode(showMode, operationVersion);
-
-            // 成功登记的实际显示流程接管序列化初态，Start不得再次重复初始化。
-            _isUIStateInitialized = true;
             var siblings = ListPool<UIBase>.Get();
             var parents = ListPool<UIBase>.Get();
             var children = ListPool<UIBase>.Get();
@@ -461,17 +586,34 @@ namespace JH
             {
                 // 取消回调重入后，旧流程不再继续。
                 if (!IsCurrentShowHideAction(operationVersion)) return;
+
+                // 取消回调可能改变父链或兄弟关系，已登记操作失去准入时必须收口旧过渡状态。
+                if (!MaintainCurrentShowAdmission(showMode, operationVersion)) return;
+
+                // 通过二次准入后才接管序列化初态，被拒绝的预约不影响Start。
+                _isUIStateInitialized = true;
+
+                // 完成二次准入后进入同步显示前关系联动。
                 if (!BeforeUIShowInvoke(siblings, parents, operationVersion, showMode)) return;
 
                 // 执行当前面板自身的同步显示行为。
                 OnUIShow();
                 if (!IsCurrentShowHideAction(operationVersion)) return;
 
+                // 显示行为可能动态换父或激活新兄弟，处理子树前按最新层级重新协调互斥组。
+                if (!ReconcileCurrentShowSiblings(siblings, showMode, operationVersion)) return;
+
                 // 当前面板完成显示行为后，再按层级顺序显示配置为随父显示的直接子UI。
                 if (!ShowChildrenWithParentInvoke(children, operationVersion)) return;
 
+                // 子UI生命周期同样可以修改父级兄弟关系，提交Showed前必须再次达到稳定互斥状态。
+                if (!ReconcileCurrentShowSiblings(siblings, showMode, operationVersion)) return;
+
                 // 使用同一份兄弟快照完成显示后流程。
-                AfterUIShowedInvoke(siblings, operationVersion);
+                AfterUIShowedInvoke(siblings, operationVersion, showMode);
+
+                // StateChanged、层级调整和After回调都可能再次改变关系，返回前完成最终动态协调。
+                ReconcileCurrentShowSiblings(siblings, showMode, operationVersion);
             }
             finally
             {
@@ -510,6 +652,9 @@ namespace JH
             // 先登记新版本再取消旧异步操作。
             var operationVersion = BeginSynchronousShowHideAction();
 
+            // 隐藏活动版本用于区分真正执行中的Hiding与取消或故障残留状态。
+            RegisterCurrentHideAction(operationVersion);
+
             // 成功登记的实际隐藏流程接管序列化初态，Start不得再次重复初始化。
             _isUIStateInitialized = true;
             var children = ListPool<UIBase>.Get();
@@ -529,8 +674,16 @@ namespace JH
             }
             finally
             {
-                // 归还本轮直接子UI快照。
-                ListPool<UIBase>.Release(children);
+                try
+                {
+                    // 归还本轮直接子UI快照。
+                    ListPool<UIBase>.Release(children);
+                }
+                finally
+                {
+                    // 同步隐藏完成、异常或被重入取代时都结束本轮隐藏活动登记。
+                    CompleteCurrentHideAction(operationVersion);
+                }
             }
         }
 
@@ -539,20 +692,23 @@ namespace JH
         /// </summary>
         /// <param name="cancellationToken">调用方提供的取消令牌。</param>
         /// <param name="showMode">当前显示请求的来源模式。</param>
+        /// <param name="parentCascadeSource">父级联请求的直接发起父UI；普通显示传null。</param>
+        /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；普通显示传-1。</param>
         /// <returns>本轮显示流程任务。</returns>
-        private async JTask ShowNotCheckStateAsync(CancellationToken cancellationToken, UIShowMode showMode)
+        private async JTask ShowNotCheckStateAsync(CancellationToken cancellationToken, UIShowMode showMode,
+            UIBase parentCascadeSource = null, int parentCascadeSourceOperationVersion = -1)
         {
             // 进入本轮操作前观察预取消和对象销毁。
             ThrowIfShowHideCancellationRequested(cancellationToken);
 
-            // 捕获本轮局部取消源和版本，后续不重复读取可变字段。
-            var operationCts = BeginAsynchronousShowHideAction(cancellationToken, out var operationVersion);
+            // 新版本必须在取消旧操作前登记显示预约，使重入兄弟能够观察本轮优先级。
+            var operationCts = BeginAsynchronousShowHideAction(
+                cancellationToken,
+                out var operationVersion,
+                showMode,
+                parentCascadeSource,
+                parentCascadeSourceOperationVersion);
 
-            // Begin成功后本轮一定仍为最新操作，可以安全登记显示来源和对应版本。
-            RegisterCurrentShowMode(showMode, operationVersion);
-
-            // 成功登记的异步显示流程接管序列化初态初始化。
-            _isUIStateInitialized = true;
             var siblings = ListPool<UIBase>.Get();
             var parents = ListPool<UIBase>.Get();
             var children = ListPool<UIBase>.Get();
@@ -560,21 +716,52 @@ namespace JH
             {
                 var operationToken = operationCts.Token;
 
+                // 取消回调可能改变父链或兄弟关系，已登记操作失去准入时必须收口旧过渡状态。
+                MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
+
+                // 通过二次准入后才接管序列化初态，被拒绝的预约不影响Start。
+                _isUIStateInitialized = true;
+
                 // 相邻UI联动与当前UI动画并行执行。
-                var beforeTask = BeforeUIShowAsyncInvoke(siblings, parents, operationToken, showMode);
+                var beforeTask = BeforeUIShowAsyncInvoke(
+                    siblings,
+                    parents,
+                    operationVersion,
+                    operationCts,
+                    showMode);
                 operationToken.ThrowIfCancellationRequested();
                 var showTask = OnUIShowAsync(operationToken);
                 await JTask.WhenAll(beforeTask, showTask);
+
+                // 异步显示行为等待期间层级可能变化，处理子树前使用最新兄弟关系收口。
+                await ReconcileCurrentShowSiblingsAsync(
+                    siblings,
+                    showMode,
+                    operationVersion,
+                    operationCts);
 
                 // 当前面板和上游关系完成后，顺序等待全部随父显示的直接子UI。
                 ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
                 await ShowChildrenWithParentAsyncInvoke(children, operationVersion, operationCts);
 
-                // 即使处理器忽略取消，也只有最新操作可以提交状态。
-                ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
-                AfterUIShowedInvoke(siblings, operationVersion, operationCts);
+                // 子UI级联完成后再次协调最新兄弟，避免动态换父绕过最初快照。
+                await ReconcileCurrentShowSiblingsAsync(
+                    siblings,
+                    showMode,
+                    operationVersion,
+                    operationCts);
 
-                // After回调也可能触发外部取消，成功完成前必须再观察一次。
+                // 即使处理器忽略取消，也只有最新操作可以提交状态。
+                AfterUIShowedInvoke(siblings, operationVersion, showMode, operationCts);
+
+                // StateChanged、层级调整和After回调都可能改变关系，成功返回前再次异步协调。
+                await ReconcileCurrentShowSiblingsAsync(
+                    siblings,
+                    showMode,
+                    operationVersion,
+                    operationCts);
+
+                // 最终协调期间也可能触发外部取消，成功完成前必须再观察一次。
                 ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
             }
             catch (Exception operationException)
@@ -634,6 +821,9 @@ namespace JH
             // 在隐藏前事件发生前登记本轮操作，修复事件重入覆盖。
             var operationCts = BeginAsynchronousShowHideAction(cancellationToken, out var operationVersion);
 
+            // 登记当前异步隐藏活动，使Hiding仅在有效操作生存期内持有互斥优先级。
+            RegisterCurrentHideAction(operationVersion);
+
             // 成功登记的异步隐藏流程接管序列化初态初始化。
             _isUIStateInitialized = true;
             var children = ListPool<UIBase>.Get();
@@ -670,7 +860,15 @@ namespace JH
                 }
                 finally
                 {
-                    CompleteAsynchronousShowHideAction(operationCts);
+                    try
+                    {
+                        // 取消和故障同样结束隐藏占权，后续同组请求可以发起显式恢复。
+                        CompleteCurrentHideAction(operationVersion);
+                    }
+                    finally
+                    {
+                        CompleteAsynchronousShowHideAction(operationCts);
+                    }
                 }
             }
         }
@@ -730,36 +928,32 @@ namespace JH
         {
             // 先提交Showing状态，确保后续回调观察到正确状态。
             State = UIState.Showing;
-            if (!IsCurrentShowHideAction(operationVersion)) return false;
+            if (!MaintainCurrentShowAdmission(showMode, operationVersion)) return false;
 
             // 先允许事件调整层级，再捕获本轮关系快照。
             BeforeUIShowEvent?.Invoke();
-            if (!IsCurrentShowHideAction(operationVersion)) return false;
-            FindSiblings(siblings);
-            if (showMode is UIShowMode.Normal) FindParents(parents);
+            if (!MaintainCurrentShowAdmission(showMode, operationVersion)) return false;
 
-            // 隐藏仍处于当前层级且属于同一互斥组的兄弟UI。
-            for (var i = 0; i < siblings.Count; i++)
-            {
-                var eachSibling = siblings[i];
-                if (!IsCurrentSibling(eachSibling) || eachSibling.mutexGroup != mutexGroup) continue;
-                eachSibling.Hide();
-                if (!IsCurrentShowHideAction(operationVersion)) return false;
-            }
+            // 事件回调可能换父或激活新兄弟，使用动态重新协调取代单次快照隐藏。
+            if (!ReconcileCurrentShowSiblings(siblings, showMode, operationVersion)) return false;
 
-            // 普通显示从根祖先到直接父UI依次处理，父级联显示不再向上递归。
-            if (showMode is UIShowMode.Normal)
+            // 兄弟隐藏回调也可以换父，因此在它们完成后才捕获最新连续父UI链。
+            if (ShouldAutoShowParentChain(showMode)) FindParents(parents);
+
+            // 自动父链策略从根祖先到直接父UI依次处理，其他来源不主动改变父页面。
+            if (ShouldAutoShowParentChain(showMode))
             {
                 for (var i = 0; i < parents.Count; i++)
                 {
                     var eachParent = parents[i];
                     if (!IsCurrentParent(eachParent)) continue;
                     eachParent.Show();
-                    if (!IsCurrentShowHideAction(operationVersion)) return false;
+                    if (!MaintainCurrentShowAdmission(showMode, operationVersion)) return false;
                 }
             }
 
-            return IsCurrentShowHideAction(operationVersion);
+            // 全部关系联动结束后最后确认本轮显示仍然拥有准入资格。
+            return MaintainCurrentShowAdmission(showMode, operationVersion);
         }
 
         /// <summary>
@@ -767,54 +961,46 @@ namespace JH
         /// </summary>
         /// <param name="siblings">用于保存本轮兄弟UI快照的列表。</param>
         /// <param name="parents">用于保存本轮祖先UI快照的列表。</param>
-        /// <param name="cancellationToken">本轮异步显隐操作令牌。</param>
+        /// <param name="operationVersion">本轮异步显示操作版本。</param>
+        /// <param name="operationCts">本轮异步显示操作取消源。</param>
         /// <param name="showMode">当前显示请求的来源模式。</param>
         /// <returns>相邻UI联动全部结束后的任务。</returns>
         private async JTask BeforeUIShowAsyncInvoke(List<UIBase> siblings, List<UIBase> parents,
-            CancellationToken cancellationToken, UIShowMode showMode)
+            int operationVersion, CancellationTokenSource operationCts, UIShowMode showMode)
         {
+            // 当前局部令牌贯穿兄弟、父链和本轮UI自身的全部异步关系任务。
+            var cancellationToken = operationCts.Token;
+
             // 状态和事件回调可能触发新显隐，因此每一步后检查取消。
             State = UIState.Showing;
-            cancellationToken.ThrowIfCancellationRequested();
+            MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
             BeforeUIShowEvent?.Invoke();
-            cancellationToken.ThrowIfCancellationRequested();
+            MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
 
-            // Transform层级是唯一关系数据源，本轮只捕获一次兄弟快照。
-            FindSiblings(siblings);
-            if (showMode is UIShowMode.Normal) FindParents(parents);
-            var taskList = ListPool<JTask>.Get();
-            try
+            // 事件回调可能改变层级，先异步协调当前全部同组兄弟。
+            await ReconcileCurrentShowSiblingsAsync(
+                siblings,
+                showMode,
+                operationVersion,
+                operationCts);
+
+            // 兄弟隐藏结束后才捕获最新父链，避免继续使用回调前的旧关系。
+            if (ShouldAutoShowParentChain(showMode)) FindParents(parents);
+
+            // 只有自动父链策略顺序等待祖先，严格父链与父级联均不主动显示父UI。
+            if (ShouldAutoShowParentChain(showMode))
             {
-                // 对同互斥组的当前兄弟UI发起异步隐藏。
-                for (var i = 0; i < siblings.Count; i++)
+                for (var i = 0; i < parents.Count; i++)
                 {
-                    if (cancellationToken.IsCancellationRequested) break;
-                    var eachSibling = siblings[i];
-                    if (!IsCurrentSibling(eachSibling) || eachSibling.mutexGroup != mutexGroup) continue;
-                    taskList.Add(eachSibling.HideAsync(cancellationToken));
-                }
-
-                // 先等待已启动的兄弟隐藏，异常时不留下无人观察的关系任务。
-                await JTask.WhenAll(taskList);
-                cancellationToken.ThrowIfCancellationRequested();
-
-                // 普通显示顺序等待父链，父级联显示不再向上等待以避免递归。
-                if (showMode is UIShowMode.Normal)
-                {
-                    for (var i = 0; i < parents.Count; i++)
-                    {
-                        var eachParent = parents[i];
-                        if (!IsCurrentParent(eachParent)) continue;
-                        await eachParent.ShowAsync(cancellationToken);
-                        cancellationToken.ThrowIfCancellationRequested();
-                    }
+                    var eachParent = parents[i];
+                    if (!IsCurrentParent(eachParent)) continue;
+                    await eachParent.ShowAsync(cancellationToken);
+                    MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
                 }
             }
-            finally
-            {
-                // 关系任务只服务本轮操作。
-                ListPool<JTask>.Release(taskList);
-            }
+
+            // 关系任务全部完成后再次阻止父链变化或高优先级重入让旧请求提交显示。
+            MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
         }
 
         /// <summary>
@@ -845,8 +1031,11 @@ namespace JH
                 // 同组兄弟正在显式显示时让显式请求优先，避免默认子UI反向取代请求来源。
                 if (HasShowingUIInSiblingGroup(children, eachChild)) continue;
 
+                // 同一父级联批次预先跳过严格低优先级候选，避免结果受Hierarchy顺序影响。
+                if (HasHigherPriorityShowWithParentCandidate(children, eachChild)) continue;
+
                 // 使用专用入口执行完整子UI生命周期，同时省略再次向上显示当前父UI。
-                eachChild.ShowFromParent();
+                eachChild.ShowFromParent(this, operationVersion);
 
                 // 子UI生命周期可能通过回调隐藏、销毁或重新显示当前父UI。
                 if (!IsCurrentShowHideAction(operationVersion)) return false;
@@ -888,8 +1077,11 @@ namespace JH
                 // 同组兄弟正在显式显示时让显式请求优先，避免链接令牌沿依赖环自取消。
                 if (HasShowingUIInSiblingGroup(children, eachChild)) continue;
 
+                // 父级联批次先选中严格更高优先级候选，不启动注定会被抢占的低优先级异步行为。
+                if (HasHigherPriorityShowWithParentCandidate(children, eachChild)) continue;
+
                 // 子UI继承父UI令牌并执行完整异步生命周期，但不再向上等待父链。
-                await eachChild.ShowFromParentAsync(operationCts.Token);
+                await eachChild.ShowFromParentAsync(operationCts.Token, this, operationVersion);
 
                 // 子UI回调可能取代当前父UI操作，继续处理下一个节点前必须再次校验。
                 ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
@@ -897,11 +1089,11 @@ namespace JH
         }
 
         /// <summary>
-        ///  判断指定子UI是否存在同互斥组且包含正在显示请求的兄弟UI分支。
+        ///  判断指定子UI是否存在同互斥组且包含有效普通显示请求的兄弟UI分支。
         /// </summary>
         /// <param name="children">当前父UI本轮捕获的直接子UI快照。</param>
         /// <param name="targetChild">准备由父UI自动显示的目标子UI。</param>
-        /// <returns>存在同组兄弟分支包含Showing节点时返回true。</returns>
+        /// <returns>存在同组兄弟分支包含有效普通显示请求时返回true。</returns>
         private bool HasShowingUIInSiblingGroup(List<UIBase> children, UIBase targetChild)
         {
             // 只检查同一份直接子UI快照，避免级联过程中重复遍历Transform。
@@ -912,7 +1104,7 @@ namespace JH
                 // 目标自身、失效节点和已经离开当前父UI的节点都不参与判断。
                 if (eachSibling == targetChild || !IsCurrentChildForParentShow(eachSibling)) continue;
 
-                // 同互斥组兄弟分支中的任意Showing节点都可能因隐藏父分支而被间接取消。
+                // 同互斥组兄弟分支中的任意有效普通显示请求都可能被隐藏父分支间接取消。
                 if (eachSibling.mutexGroup == targetChild.mutexGroup &&
                     HasShowingUIInBranch(eachSibling)) return true;
             }
@@ -922,10 +1114,37 @@ namespace JH
         }
 
         /// <summary>
+        ///  判断目标子UI是否存在同组且配置为随父显示的严格更高优先级候选。
+        /// </summary>
+        /// <param name="children">当前父UI本轮捕获的直接子UI快照。</param>
+        /// <param name="targetChild">准备由父UI自动显示的目标子UI。</param>
+        /// <returns>存在严格更高优先级候选时返回true。</returns>
+        private bool HasHigherPriorityShowWithParentCandidate(List<UIBase> children, UIBase targetChild)
+        {
+            // 候选预选只比较同一份直接子UI快照，不扩大到其他层级。
+            for (var i = 0; i < children.Count; i++)
+            {
+                var eachCandidate = children[i];
+
+                // 目标自身、已失效节点和未配置随父显示的UI都不是本批次候选。
+                if (eachCandidate == targetChild ||
+                    !IsCurrentChildForParentShow(eachCandidate) ||
+                    !eachCandidate.showWithParent) continue;
+
+                // 只在同互斥组内使用数值优先级，相等时保留原Hierarchy后请求获胜语义。
+                if (eachCandidate.mutexGroup == targetChild.mutexGroup &&
+                    eachCandidate.mutexPriority > targetChild.mutexPriority) return true;
+            }
+
+            // 本批次没有严格更高优先级候选时允许目标继续原流程。
+            return false;
+        }
+
+        /// <summary>
         ///  判断连续UI子树分支中是否存在仍在执行的显式显示请求。
         /// </summary>
         /// <param name="branchUI">需要检查的分支根UI。</param>
-        /// <returns>分支根或连续UI后代存在有效普通Showing请求时返回true。</returns>
+        /// <returns>分支根或连续UI后代存在有效普通显示请求时返回true。</returns>
         private static bool HasShowingUIInBranch(UIBase branchUI)
         {
             // 已销毁分支不再包含有效显示请求。
@@ -943,7 +1162,7 @@ namespace JH
                     var currentUI = pendingUIs[lastIndex];
                     pendingUIs.RemoveAt(lastIndex);
 
-                    // 回调期间销毁的节点直接跳过，有效普通Showing节点立即确认存在竞争请求。
+                    // 回调期间销毁的节点直接跳过，有效普通显示预约立即确认存在竞争请求。
                     if (!currentUI) continue;
                     if (currentUI.IsCurrentNormalShowAction()) return true;
 
@@ -968,14 +1187,15 @@ namespace JH
         /// <summary>
         ///  提交UI显示完成状态、调整兄弟层级并派发事件。
         /// </summary>
-        /// <param name="siblings">本轮显示前捕获的兄弟UI快照。</param>
+        /// <param name="siblings">本轮动态协调后保留的最新兄弟UI快照。</param>
         /// <param name="operationVersion">本轮显隐操作版本。</param>
+        /// <param name="showMode">当前显示请求的来源模式。</param>
         /// <param name="operationCts">异步流程的本轮取消源；同步流程传null。</param>
-        private void AfterUIShowedInvoke(List<UIBase> siblings, int operationVersion,
+        private void AfterUIShowedInvoke(List<UIBase> siblings, int operationVersion, UIShowMode showMode,
             CancellationTokenSource operationCts = null)
         {
-            // 过期操作不得覆盖更新请求的状态。
-            if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return;
+            // 提交Showed前最后复核父链和兄弟优先级，失去准入时由隐藏流程收口。
+            if (!MaintainCurrentShowAdmission(showMode, operationVersion, operationCts)) return;
             State = UIState.Showed;
             if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return;
 
@@ -1006,7 +1226,10 @@ namespace JH
         /// </summary>
         /// <param name="showMode">当前显示请求的来源模式。</param>
         /// <param name="operationVersion">当前显示请求的显隐操作版本。</param>
-        private void RegisterCurrentShowMode(UIShowMode showMode, int operationVersion)
+        /// <param name="parentCascadeSource">父级联请求的直接发起父UI；普通显示传null。</param>
+        /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；普通显示传-1。</param>
+        private void RegisterCurrentShowMode(UIShowMode showMode, int operationVersion,
+            UIBase parentCascadeSource, int parentCascadeSourceOperationVersion)
         {
             // 取消旧操作时的回调可能已经登记新版本，旧流程不得覆盖新请求来源。
             if (!IsCurrentShowHideAction(operationVersion)) return;
@@ -1015,6 +1238,14 @@ namespace JH
             _currentShowMode = showMode;
             _showModeOperationVersion = operationVersion;
             _activeShowOperationVersion = operationVersion;
+
+            // 只有父级联模式保留来源父UI，普通请求必须清除上一轮级联引用。
+            _currentParentCascadeSource = showMode is UIShowMode.ParentCascade
+                ? parentCascadeSource
+                : null;
+            _currentParentCascadeSourceOperationVersion = showMode is UIShowMode.ParentCascade
+                ? parentCascadeSourceOperationVersion
+                : -1;
         }
 
         /// <summary>
@@ -1028,6 +1259,36 @@ namespace JH
 
             // Showing状态可以因异常保留，但结束后的请求不再具有显式显示优先级。
             _activeShowOperationVersion = -1;
+
+            // 当前显示生命周期结束后不再保留可能已销毁的父级联来源引用。
+            _currentParentCascadeSource = null;
+            _currentParentCascadeSourceOperationVersion = -1;
+        }
+
+        /// <summary>
+        ///  为仍然有效的隐藏操作登记活动版本。
+        /// </summary>
+        /// <param name="operationVersion">当前隐藏请求的显隐操作版本。</param>
+        private void RegisterCurrentHideAction(int operationVersion)
+        {
+            // 取消旧操作的回调可能已经登记更新版本，旧隐藏不得覆盖它。
+            if (!IsCurrentShowHideAction(operationVersion)) return;
+
+            // 活动版本只用于识别本轮真正执行中的隐藏生命周期。
+            _activeHideOperationVersion = operationVersion;
+        }
+
+        /// <summary>
+        ///  结束指定版本的隐藏生命周期活动登记。
+        /// </summary>
+        /// <param name="operationVersion">已经离开隐藏生命周期的显隐操作版本。</param>
+        private void CompleteCurrentHideAction(int operationVersion)
+        {
+            // 旧隐藏的finally不得清除更新隐藏刚登记的活动版本。
+            if (_activeHideOperationVersion != operationVersion) return;
+
+            // 失败或取消可以残留Hiding状态，但已结束操作不再持有组级优先权。
+            _activeHideOperationVersion = -1;
         }
 
         /// <summary>
@@ -1036,30 +1297,74 @@ namespace JH
         /// <returns>当前操作由公开API或序列化初态发起且仍为最新版本时返回true。</returns>
         private bool IsCurrentNormalShowAction()
         {
-            // 只有当前版本且仍在执行的Normal显示，才可能正在等待父链。
-            if (State is not UIState.Showing ||
-                _currentShowMode is not UIShowMode.Normal ||
-                _activeShowOperationVersion != _showHideOperationVersion ||
+            // 显示请求可能尚处于Hided入口预约窗口，因此不以State作为有效性前提。
+            if (_currentShowMode is not UIShowMode.Normal) return false;
+
+            // 普通显示还必须同时是当前有效显示预约。
+            return IsCurrentShowAction();
+        }
+
+        /// <summary>
+        ///  判断当前是否存在仍然有效的显示操作预约。
+        /// </summary>
+        /// <returns>显示版本仍为最新且未被取消时返回true。</returns>
+        private bool IsCurrentShowAction()
+        {
+            // 显示活动版本、模式版本和全局显隐版本必须指向同一请求。
+            if (_activeShowOperationVersion != _showHideOperationVersion ||
                 !IsCurrentShowHideAction(_showModeOperationVersion)) return false;
 
-            // 外部取消已经同步到链接取消源时，允许新的父级联立即接管该Showing节点。
+            // 外部取消已同步到链接取消源时，不再让过期请求占用互斥组。
+            return _currentShowHideCts == null || !_currentShowHideCts.IsCancellationRequested;
+        }
+
+        /// <summary>
+        ///  判断当前是否存在仍然有效的隐藏操作。
+        /// </summary>
+        /// <returns>隐藏活动版本仍为最新且未被取消时返回true。</returns>
+        private bool IsCurrentHideAction()
+        {
+            // 只有与全局显隐版本一致的隐藏生命周期才能继续占权。
+            if (_activeHideOperationVersion != _showHideOperationVersion) return false;
+
+            // 异步隐藏的链接令牌已取消时，允许后续请求通过新隐藏流程恢复残留状态。
             return _currentShowHideCts == null || !_currentShowHideCts.IsCancellationRequested;
         }
 
         /// <summary>
         ///  开始一次同步显隐操作，并取消此前异步操作。
         /// </summary>
+        /// <param name="showMode">显示操作的来源模式；隐藏操作传null。</param>
+        /// <param name="parentCascadeSource">父级联请求的直接发起父UI；其他操作传null。</param>
+        /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；其他操作传-1。</param>
         /// <returns>本轮同步显隐操作版本。</returns>
-        private int BeginSynchronousShowHideAction()
+        private int BeginSynchronousShowHideAction(UIShowMode? showMode = null,
+            UIBase parentCascadeSource = null, int parentCascadeSourceOperationVersion = -1)
         {
             // 先摘除旧取消源，避免旧finally误清理后来创建的新操作。
             var previousCts = _currentShowHideCts;
             _currentShowHideCts = null;
 
-            // 取消回调中的更新请求可以通过新版本取代本轮操作。
+            // 显示操作先登记软预约，使取消旧令牌产生的重入请求能观察当前优先级。
             var operationVersion = NextShowHideOperationVersion();
-            previousCts?.Cancel();
-            return operationVersion;
+            if (showMode.HasValue)
+                RegisterCurrentShowMode(
+                    showMode.Value,
+                    operationVersion,
+                    parentCascadeSource,
+                    parentCascadeSourceOperationVersion);
+            try
+            {
+                // 取消回调中的更新请求仍可以用更新版本取代本轮操作。
+                previousCts?.Cancel();
+                return operationVersion;
+            }
+            catch (Exception)
+            {
+                // 取消回调抛错时结束本轮未启动的显示预约，避免永久占用互斥组。
+                if (showMode.HasValue) CompleteCurrentShowAction(operationVersion);
+                throw;
+            }
         }
 
         /// <summary>
@@ -1067,9 +1372,13 @@ namespace JH
         /// </summary>
         /// <param name="cancellationToken">调用方取消令牌。</param>
         /// <param name="operationVersion">返回本轮显隐操作版本。</param>
+        /// <param name="showMode">显示操作的来源模式；隐藏操作传null。</param>
+        /// <param name="parentCascadeSource">父级联请求的直接发起父UI；其他操作传null。</param>
+        /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；其他操作传-1。</param>
         /// <returns>仅属于本轮操作的链接取消源。</returns>
         private CancellationTokenSource BeginAsynchronousShowHideAction(CancellationToken cancellationToken,
-            out int operationVersion)
+            out int operationVersion, UIShowMode? showMode = null, UIBase parentCascadeSource = null,
+            int parentCascadeSourceOperationVersion = -1)
         {
             // 任何可见副作用发生前观察取消。
             ThrowIfShowHideCancellationRequested(cancellationToken);
@@ -1080,6 +1389,12 @@ namespace JH
             var previousCts = _currentShowHideCts;
             operationVersion = NextShowHideOperationVersion();
             _currentShowHideCts = operationCts;
+            if (showMode.HasValue)
+                RegisterCurrentShowMode(
+                    showMode.Value,
+                    operationVersion,
+                    parentCascadeSource,
+                    parentCascadeSourceOperationVersion);
             try
             {
                 previousCts?.Cancel();
@@ -1090,6 +1405,7 @@ namespace JH
             {
                 // 启动失败时只清理由本方法登记的取消源。
                 if (ReferenceEquals(_currentShowHideCts, operationCts)) _currentShowHideCts = null;
+                if (showMode.HasValue) CompleteCurrentShowAction(operationVersion);
                 operationCts.Dispose();
                 throw;
             }
@@ -1233,18 +1549,30 @@ namespace JH
         /// </summary>
         private void InitUIState()
         {
-            // 已完成状态使用同步流程恢复实际显示效果。
-            if (State == UIState.Showed) ShowNotCheckState(UIShowMode.Normal);
+            // 序列化Showed只在当前关系满足准入时恢复实际显示效果。
+            if (State == UIState.Showed)
+            {
+                // 严格父链未就绪或更高优先级已占权时，将不可见假状态规范化为Hided。
+                if (!CanScheduleShow(UIShowMode.Normal)) HideNotCheckState();
+                else ShowNotCheckState(UIShowMode.Normal);
+            }
             else if (State == UIState.Hided) HideNotCheckState();
             else if (State == UIState.Showing)
             {
+                // 过渡初态先收口为Hided，再通过公开异步入口重新执行准入。
                 HideNotCheckState();
                 _ = ShowAsync(destroyCancellationToken);
             }
             else if (State == UIState.Hiding)
             {
-                ShowNotCheckState(UIShowMode.Normal);
-                _ = HideAsync(destroyCancellationToken);
+                // 不具备显示准入时直接完成隐藏，避免启动一次必然被拒绝的显示。
+                if (!CanScheduleShow(UIShowMode.Normal)) HideNotCheckState();
+                else
+                {
+                    // 兼容原有Hiding初态，先恢复显示效果再异步完成隐藏。
+                    ShowNotCheckState(UIShowMode.Normal);
+                    _ = HideAsync(destroyCancellationToken);
+                }
             }
         }
 
@@ -1271,7 +1599,7 @@ namespace JH
         }
 
         /// <summary>
-        ///  将当前有效的兄弟UI写入指定快照列表。
+        ///  将当前需要参与显示关系联动的兄弟UI写入指定快照列表。
         /// </summary>
         /// <param name="siblings">接收兄弟UI的可复用列表。</param>
         private void FindSiblings(List<UIBase> siblings)
@@ -1285,8 +1613,11 @@ namespace JH
                 for (var i = 0; i < parent.childCount; i++)
                 {
                     var child = parent.GetChild(i);
-                    if (child == transform || !child.gameObject.activeInHierarchy) continue;
-                    if (child.TryGetComponent<UIBase>(out var sibling)) siblings.Add(sibling);
+                    if (child == transform || !child.TryGetComponent<UIBase>(out var sibling)) continue;
+
+                    // 实际显示联动除活跃节点外，还必须能取消尚未激活的显示预约。
+                    if (child.gameObject.activeInHierarchy || sibling.IsCurrentShowAction())
+                        siblings.Add(sibling);
                 }
 
                 return;
@@ -1302,8 +1633,12 @@ namespace JH
                 for (var i = 0; i < rootObjects.Count; i++)
                 {
                     var rootObject = rootObjects[i];
-                    if (rootObject == gameObject || !rootObject.activeInHierarchy) continue;
-                    if (rootObject.TryGetComponent<UIBase>(out var sibling)) siblings.Add(sibling);
+                    if (rootObject == gameObject ||
+                        !rootObject.TryGetComponent<UIBase>(out var sibling)) continue;
+
+                    // 根UI的入口预约与普通兄弟采用相同取消规则。
+                    if (rootObject.activeInHierarchy || sibling.IsCurrentShowAction())
+                        siblings.Add(sibling);
                 }
             }
             finally
@@ -1314,7 +1649,7 @@ namespace JH
         }
 
         /// <summary>
-        ///  将当前有效的直接子UI写入指定快照列表。
+        ///  将当前需要参与父隐藏联动的直接子UI写入指定快照列表。
         /// </summary>
         /// <param name="children">接收直接子UI的可复用列表。</param>
         private void FindChildren(List<UIBase> children)
@@ -1324,8 +1659,11 @@ namespace JH
             for (var i = 0; i < transform.childCount; i++)
             {
                 var child = transform.GetChild(i);
-                if (!child.gameObject.activeInHierarchy) continue;
-                if (child.TryGetComponent<UIBase>(out var childUI)) children.Add(childUI);
+                if (!child.TryGetComponent<UIBase>(out var childUI)) continue;
+
+                // 父隐藏除活跃子UI外，还需取消尚未激活GameObject的显示预约。
+                if (child.gameObject.activeInHierarchy || childUI.IsCurrentShowAction())
+                    children.Add(childUI);
             }
         }
 
@@ -1348,11 +1686,12 @@ namespace JH
         ///  判断快照节点当前是否仍是有效兄弟UI。
         /// </summary>
         /// <param name="sibling">需要校验的兄弟UI。</param>
-        /// <returns>节点有效、活动且关系未改变时返回true。</returns>
+        /// <returns>节点有效、关系未改变且活跃或持有显示预约时返回true。</returns>
         private bool IsCurrentSibling(UIBase sibling)
         {
-            // 同时处理销毁、禁用GameObject和运行时换父。
-            if (!sibling || sibling == this || !sibling.gameObject.activeInHierarchy) return false;
+            // 销毁、普通失活和运行时换父都使原关系快照失效。
+            if (!sibling || sibling == this ||
+                (!sibling.gameObject.activeInHierarchy && !sibling.IsCurrentShowAction())) return false;
             var parent = transform.parent;
             if (parent) return sibling.transform.parent == parent;
             return !sibling.transform.parent && sibling.gameObject.scene == gameObject.scene;
@@ -1362,11 +1701,12 @@ namespace JH
         ///  判断快照节点当前是否仍是有效直接子UI。
         /// </summary>
         /// <param name="child">需要校验的子UI。</param>
-        /// <returns>节点有效、活动且直接父节点未改变时返回true。</returns>
+        /// <returns>节点有效、直接父节点未改变且活跃或持有显示预约时返回true。</returns>
         private bool IsCurrentChild(UIBase child)
         {
-            // Unity对象可能在前一个回调中被销毁或换父。
-            return child && child.gameObject.activeInHierarchy && child.transform.parent == transform;
+            // 失活的普通子UI无需重复隐藏，但有效显示预约必须由父隐藏取消。
+            return child && child.transform.parent == transform &&
+                   (child.gameObject.activeInHierarchy || child.IsCurrentShowAction());
         }
 
         /// <summary>
