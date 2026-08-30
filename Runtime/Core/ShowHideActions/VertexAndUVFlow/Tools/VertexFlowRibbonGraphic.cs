@@ -184,6 +184,7 @@ namespace JH
             SetVerticesDirty();
         }
 
+#if UNITY_EDITOR
         /// <summary>
         ///  在编辑器阶段限制全部外观参数并保持Ribbon不参与交互。
         /// </summary>
@@ -206,6 +207,7 @@ namespace JH
             // 编辑器修改参数后让Canvas在下一次重建时立即反映新的拖尾轮廓。
             SetVerticesDirty();
         }
+#endif
 
         /// <summary>
         ///  在运行时一次性配置Ribbon的主要长度、宽度和透明度风格。
