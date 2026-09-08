@@ -112,7 +112,7 @@ namespace JH
         protected virtual async JTask OnUIHideAsync(CancellationToken token)
         {
             await JTween.Tween(EffectAmount, 1, value => EffectAmount = value, hideDuration, token,
-                hideEase == Ease.NotSet ? Ease.Linear : hideEase);
+                hideEase == Ease.NotSet ? Ease.Linear : hideEase, TweenTimeMode.Unscaled);
         }
 
         /// <summary>
@@ -121,7 +121,7 @@ namespace JH
         protected virtual async JTask OnUIShowAsync(CancellationToken token)
         {
             await JTween.Tween(EffectAmount, 0, value => EffectAmount = value, showDuration, token,
-                showEase == Ease.NotSet ? Ease.Linear : showEase);
+                showEase == Ease.NotSet ? Ease.Linear : showEase, TweenTimeMode.Unscaled);
         }
 
         /// <summary>
