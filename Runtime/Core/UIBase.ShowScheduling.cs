@@ -170,9 +170,8 @@ namespace JH
                 yield break;
             _isStrictInitialShowDeferred = false;
 
-            // 先提交初始化标记，再根据最新父链状态执行序列化初态。
-            _isUIStateInitialized = true;
-            InitUIState();
+            // 恢复初始化同样经过调度器，执行前复核是否已被其他请求接管。
+            UIOperationDispatcher.Run(InitializeUIState);
         }
 
         /// <summary>
@@ -339,7 +338,7 @@ namespace JH
                     parentCascadeSourceOperationVersion)) return true;
 
             // 新隐藏请求会递增版本并取消当前异步令牌，确保已启动显示行为能够完整收口。
-            Hide();
+            ExecuteHide();
 
             // 异步路径必须把更新取消传播给原显示调用方，不能把已开始的显示误报为成功。
             if (operationCts != null)
@@ -383,7 +382,7 @@ namespace JH
                     return MaintainCurrentShowAdmission(showMode, operationVersion);
 
                 // 同组低优先级和相等优先级均由当前后请求完整隐藏。
-                siblingToHide.Hide();
+                siblingToHide.ExecuteHide();
             }
         }
 
@@ -416,7 +415,7 @@ namespace JH
                         if (!IsCurrentSibling(eachSibling) ||
                             eachSibling.mutexGroup != mutexGroup ||
                             !RequiresSiblingHide(eachSibling)) continue;
-                        taskList.Add(eachSibling.HideAsync(operationCts.Token));
+                        taskList.Add(eachSibling.ExecuteHideAsync(operationCts.Token));
                     }
 
                     // 没有剩余竞争项时保留最新快照，并在返回前最后校验本轮身份。
@@ -427,7 +426,7 @@ namespace JH
                     }
 
                     // 已启动的兄弟任务必须全部被观察，任何失败都由当前显示调用方处理。
-                    await UIAsync.WaitAll(taskList);
+                    await UIOperationDispatcher.Continue(UIAsync.WaitAll(taskList));
                 }
             }
             finally

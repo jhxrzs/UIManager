@@ -31,7 +31,7 @@ namespace JH
         event Action HideActions;
 
         /// <summary>
-        ///  隐藏UI
+        ///  提交同步隐藏请求。空闲时立即执行；调度回调中的请求在当前工作返回后执行。
         /// </summary>
         void Hide();
     }
@@ -47,7 +47,7 @@ namespace JH
         event Func<CancellationToken, UniTask> HideAsyncActions;
 
         /// <summary>
-        ///  异步隐藏UI
+        ///  提交异步隐藏请求，返回任务跟踪该请求的完整结果，等待期间允许后续请求打断。
         /// </summary>
         /// <param name="cancellationToken"> 取消异步的token</param>
         /// <returns> 返回异步任务</returns>
