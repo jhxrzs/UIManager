@@ -7,12 +7,12 @@ namespace JH
     public interface IShowUIBase : IUIBase
     {
         /// <summary>
-        ///  UI显示前触发
+        ///  UI显示前同步通知；单个订阅者异常不会中断其余通知或显隐流程。
         /// </summary>
         event Action BeforeUIShowEvent;
 
         /// <summary>
-        ///  UI显示后触发
+        ///  UI显示后同步通知；单个订阅者异常不会中断其余通知或显隐流程。
         /// </summary>
         event Action AfterUIShowedEvent;
     }

@@ -248,7 +248,7 @@ namespace JH.Test_UIManager
             var source = CreateUI("FaultQueueSource", CreateObject("FaultQueueSourceRoot").transform);
             var next = CreateUI("FaultQueueNext", CreateObject("FaultQueueNextRoot").transform);
             var failure = new InvalidOperationException("request callback failed");
-            source.BeforeUIShowEvent += () =>
+            source.ShowActions += () =>
             {
                 next.Show();
                 throw failure;
@@ -266,7 +266,7 @@ namespace JH.Test_UIManager
             var source = CreateUI("DeferredFaultSource", CreateObject("DeferredFaultSourceRoot").transform);
             var broken = CreateUI("DeferredFaultTarget", CreateObject("DeferredFaultTargetRoot").transform);
             var next = CreateUI("DeferredFaultNext", CreateObject("DeferredFaultNextRoot").transform);
-            broken.BeforeUIShowEvent += () => throw new InvalidOperationException("deferred request failed");
+            broken.ShowActions += () => throw new InvalidOperationException("deferred request failed");
             source.BeforeUIShowEvent += () =>
             {
                 broken.Show();

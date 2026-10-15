@@ -244,7 +244,7 @@ namespace JH
                 // 先提交新状态，确保事件订阅者读取State时得到新值。
                 var previousState = state;
                 state = value;
-                OnStateChanged?.Invoke(previousState, value);
+                UINotification.Invoke(this, nameof(OnStateChanged), OnStateChanged, previousState, value);
             }
         }
 
@@ -925,7 +925,7 @@ namespace JH
             // 先提交Hiding状态，再触发隐藏前事件。
             State = UIState.Hiding;
             if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return false;
-            BeforeUIHideEvent?.Invoke();
+            UINotification.Invoke(this, nameof(BeforeUIHideEvent), BeforeUIHideEvent);
             return ValidateCurrentShowHideAction(operationVersion, operationCts);
         }
 
@@ -940,7 +940,7 @@ namespace JH
             if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return;
             State = UIState.Hided;
             if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return;
-            AfterUIHidedEvent?.Invoke();
+            UINotification.Invoke(this, nameof(AfterUIHidedEvent), AfterUIHidedEvent);
         }
 
         /// <summary>
@@ -959,7 +959,7 @@ namespace JH
             if (!MaintainCurrentShowAdmission(showMode, operationVersion)) return false;
 
             // 先允许事件调整层级，再捕获本轮关系快照。
-            BeforeUIShowEvent?.Invoke();
+            UINotification.Invoke(this, nameof(BeforeUIShowEvent), BeforeUIShowEvent);
             if (!MaintainCurrentShowAdmission(showMode, operationVersion)) return false;
 
             // 事件回调可能换父或激活新兄弟，使用动态重新协调取代单次快照隐藏。
@@ -1002,7 +1002,7 @@ namespace JH
             // 状态和事件回调可能触发新显隐，因此每一步后检查取消。
             State = UIState.Showing;
             MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
-            BeforeUIShowEvent?.Invoke();
+            UINotification.Invoke(this, nameof(BeforeUIShowEvent), BeforeUIShowEvent);
             MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
 
             // 事件回调可能改变层级，先异步协调当前全部同组兄弟。
@@ -1246,7 +1246,7 @@ namespace JH
 
             // 层级变化回调也可能重入显隐。
             if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return;
-            AfterUIShowedEvent?.Invoke();
+            UINotification.Invoke(this, nameof(AfterUIShowedEvent), AfterUIShowedEvent);
         }
 
         /// <summary>
