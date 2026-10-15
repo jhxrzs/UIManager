@@ -1,4 +1,5 @@
-﻿using System;
+using Cysharp.Threading.Tasks;
+using System;
 using System.Threading;
 using UnityEngine;
 
@@ -109,19 +110,19 @@ namespace JH
         /// <summary>
         ///  UI面板隐藏时的动效
         /// </summary>
-        protected virtual async JTask OnUIHideAsync(CancellationToken token)
+        protected virtual async UniTask OnUIHideAsync(CancellationToken token)
         {
-            await JTween.Tween(EffectAmount, 1, value => EffectAmount = value, hideDuration, token,
-                hideEase == Ease.NotSet ? Ease.Linear : hideEase, TweenTimeMode.Unscaled);
+            await UITransition.RunAsync(EffectAmount, 1, value => EffectAmount = value, hideDuration, token,
+                hideEase == Ease.NotSet ? Ease.Linear : hideEase);
         }
 
         /// <summary>
         ///  UI面板显示时的动效
         /// </summary>
-        protected virtual async JTask OnUIShowAsync(CancellationToken token)
+        protected virtual async UniTask OnUIShowAsync(CancellationToken token)
         {
-            await JTween.Tween(EffectAmount, 0, value => EffectAmount = value, showDuration, token,
-                showEase == Ease.NotSet ? Ease.Linear : showEase, TweenTimeMode.Unscaled);
+            await UITransition.RunAsync(EffectAmount, 0, value => EffectAmount = value, showDuration, token,
+                showEase == Ease.NotSet ? Ease.Linear : showEase);
         }
 
         /// <summary>

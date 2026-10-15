@@ -1,4 +1,5 @@
-﻿using System;
+using Cysharp.Threading.Tasks;
+using System;
 using UnityEngine;
 
 namespace JH
@@ -77,7 +78,7 @@ namespace JH
         /// <param name="ui">需要显示的UI。</param>
         private void ExecuteShow(UIBase ui)
         {
-            // 异步配置进入受控事件边界，保证JTask结果和异常都会被消费。
+            // 异步配置进入受控事件边界，保证UniTask结果和异常都会被消费。
             if (IsAsync)
             {
                 ExecuteAsync(ui, ShowHideAction.ToShow);
@@ -94,7 +95,7 @@ namespace JH
         /// <param name="ui">需要隐藏的UI。</param>
         private void ExecuteHide(UIBase ui)
         {
-            // 异步配置进入受控事件边界，保证JTask结果和异常都会被消费。
+            // 异步配置进入受控事件边界，保证UniTask结果和异常都会被消费。
             if (IsAsync)
             {
                 ExecuteAsync(ui, ShowHideAction.ToHide);

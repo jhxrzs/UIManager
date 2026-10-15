@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using UnityEngine;
 
 namespace JH
@@ -57,11 +57,11 @@ namespace JH
         {
             return new EffectSerializedRectTransform
             {
-                anchorPos = EaseFunctionNumeric.Tween(from.anchorPos, to.anchorPos, posEase, t),
-                angle = EaseFunctionNumeric.Tween(from.angle, to.angle, angleEase, t),
-                scale = EaseFunctionNumeric.Tween(from.scale, to.scale, scaleEase, t),
-                sizeDelta = EaseFunctionNumeric.Tween(from.sizeDelta, to.sizeDelta, sizeDeltaEase, t),
-                pivot = EaseFunctionNumeric.Tween(from.pivot, to.pivot, pivotEase, t)
+                anchorPos = Vector2.LerpUnclamped(from.anchorPos, to.anchorPos, UIEasing.Evaluate(posEase, t)),
+                angle = Vector3.LerpUnclamped(from.angle, to.angle, UIEasing.Evaluate(angleEase, t)),
+                scale = Vector3.LerpUnclamped(from.scale, to.scale, UIEasing.Evaluate(scaleEase, t)),
+                sizeDelta = Vector2.LerpUnclamped(from.sizeDelta, to.sizeDelta, UIEasing.Evaluate(sizeDeltaEase, t)),
+                pivot = Vector2.LerpUnclamped(from.pivot, to.pivot, UIEasing.Evaluate(pivotEase, t))
             };
         }
     }

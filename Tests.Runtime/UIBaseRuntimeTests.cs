@@ -1,3 +1,4 @@
+using Cysharp.Threading.Tasks;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -64,14 +65,14 @@ namespace JH.Test_UIManager
             ui.ShowAsyncActions += _ =>
             {
                 showActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
 
             // 使用立即完成任务覆盖异步隐藏处理器的正常组合路径。
             ui.HideAsyncActions += _ =>
             {
                 hideActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
 
             // 分别统计两个完整生命周期的After通知次数。
@@ -134,7 +135,7 @@ namespace JH.Test_UIManager
             showUI.ShowAsyncActions += _ =>
             {
                 showActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
 
             // 预取消时以下隐藏委托均不得被调用。
@@ -144,7 +145,7 @@ namespace JH.Test_UIManager
             hideUI.HideAsyncActions += _ =>
             {
                 hideActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
 
             // 两个令牌都在调用API之前取消，验证入口处的取消检查。
@@ -196,7 +197,7 @@ namespace JH.Test_UIManager
             ui.ShowAsyncActions += _ =>
             {
                 handlerStarted = true;
-                return new JTask(() => releaseHandler);
+                return UniTask.WaitUntil(() => releaseHandler);
             };
             ui.AfterUIShowedEvent += () => afterShowCount++;
 
@@ -241,7 +242,7 @@ namespace JH.Test_UIManager
             // 父UI使用独立令牌取消，子UI调用方令牌保持None。
             using var parentActionTokenSource = new CancellationTokenSource();
             parentUI.ShowAsyncActions += _ => WaitUntilCanceled(parentActionTokenSource.Token);
-            childUI.ShowAsyncActions += _ => JTask.CompletedTask;
+            childUI.ShowAsyncActions += _ => UniTask.CompletedTask;
             parentUI.AfterUIShowedEvent += () => parentAfterCount++;
             childUI.AfterUIShowedEvent += () => childAfterCount++;
 
@@ -288,8 +289,8 @@ namespace JH.Test_UIManager
 
                     // 根祖先保持挂起，用于证明父节点不会与祖先并发重复启动。
                     return index == 0
-                        ? new JTask(() => releaseGrandParent)
-                        : JTask.CompletedTask;
+                        ? UniTask.WaitUntil(() => releaseGrandParent)
+                        : UniTask.CompletedTask;
                 };
                 panels[index].AfterUIShowedEvent += () => afterCounts[index]++;
             }
@@ -556,22 +557,22 @@ namespace JH.Test_UIManager
             rootUI.ShowAsyncActions += _ =>
             {
                 rootActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
             requestedBranch.ShowAsyncActions += _ =>
             {
                 branchActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
             requestedChild.ShowAsyncActions += _ =>
             {
                 requestedActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
             defaultSibling.ShowAsyncActions += _ =>
             {
                 siblingActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
 
             // 捕获异步结果并通过统一超时桥接器检测潜在死锁。
@@ -615,17 +616,17 @@ namespace JH.Test_UIManager
             firstChild.ShowAsyncActions += _ =>
             {
                 firstChildStarted = true;
-                return new JTask(() => releaseFirstChild);
+                return UniTask.WaitUntil(() => releaseFirstChild);
             };
             secondChild.ShowAsyncActions += _ =>
             {
                 secondChildActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
             skippedChild.ShowAsyncActions += _ =>
             {
                 skippedChildActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
             parentUI.AfterUIShowedEvent += () => parentAfterCount++;
 
@@ -818,7 +819,7 @@ namespace JH.Test_UIManager
             markedChild.ShowAsyncActions += _ =>
             {
                 childStarted = true;
-                return new JTask(() => releaseChild);
+                return UniTask.WaitUntil(() => releaseChild);
             };
             parentUI.AfterUIShowedEvent += () => parentAfterCount++;
             markedChild.AfterUIShowedEvent += () => childAfterCount++;
@@ -865,7 +866,7 @@ namespace JH.Test_UIManager
             markedChild.ShowAsyncActions += _ =>
             {
                 oldChildActionStarted = true;
-                return new JTask(() => releaseOldChildAction);
+                return UniTask.WaitUntil(() => releaseOldChildAction);
             };
             markedChild.ShowActions += () => replacementSyncActionCount++;
 
@@ -929,11 +930,11 @@ namespace JH.Test_UIManager
             parentUI.ShowAsyncActions += _ =>
             {
                 oldParentActionStarted = true;
-                return new JTask(() => releaseOldParentAction);
+                return UniTask.WaitUntil(() => releaseOldParentAction);
             };
 
             // 旧显式请求使用独立异步处理器，避免回落到同步ShowActions污染接管计数。
-            markedChild.ShowAsyncActions += _ => JTask.CompletedTask;
+            markedChild.ShowAsyncActions += _ => UniTask.CompletedTask;
             markedChild.ShowActions += () => replacementChildShowCount++;
 
             // 子UI通过公开API发起普通显示，并在等待父UI期间取消调用方令牌。
@@ -1206,15 +1207,15 @@ namespace JH.Test_UIManager
         }
 
         /// <summary>
-        ///  等待JTask并把异常转换为可在UnityTest主协程中断言的结果。
+        ///  等待UniTask并把异常转换为可在UnityTest主协程中断言的结果。
         /// </summary>
-        /// <param name="task">需要观察的JTask。</param>
+        /// <param name="task">需要观察的UniTask。</param>
         /// <returns>正常完成时返回null，失败或取消时返回对应异常。</returns>
-        private static async Task<Exception> CaptureException(JTask task)
+        private static async Task<Exception> CaptureException(UniTask task)
         {
             try
             {
-                // 只等待一次，符合JTask单次消费约束。
+                // 只等待一次，符合UniTask单次消费约束。
                 await task;
                 return null;
             }
@@ -1245,14 +1246,14 @@ namespace JH.Test_UIManager
         }
 
         /// <summary>
-        ///  创建只会通过指定令牌取消的JTask处理器。
+        ///  创建只会通过指定令牌取消的UniTask处理器。
         /// </summary>
         /// <param name="cancellationToken">控制任务取消的独立令牌。</param>
         /// <returns>令牌取消后抛出OperationCanceledException的任务。</returns>
-        private static async JTask WaitUntilCanceled(CancellationToken cancellationToken)
+        private static async UniTask WaitUntilCanceled(CancellationToken cancellationToken)
         {
             // 永不自然满足的条件确保该任务只能通过令牌结束。
-            await JTask.WaitUntil(() => false, cancellationToken);
+            await UniTask.WaitUntil(() => false, cancellationToken: cancellationToken);
         }
     }
 }

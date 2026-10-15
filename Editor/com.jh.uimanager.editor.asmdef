@@ -1,16 +1,18 @@
 {
-    "name": "com.jh.uimanager.editor",
-    "rootNamespace": "JH",
-    "references": [
-        "GUID:7f95b0762ef9dd84d9f19e2c4855f276"
-    ],
-    "includePlatforms": [],
-    "excludePlatforms": [],
-    "allowUnsafeCode": false,
-    "overrideReferences": false,
-    "precompiledReferences": [],
-    "autoReferenced": true,
-    "defineConstraints": [],
-    "versionDefines": [],
-    "noEngineReferences": false
+  "name": "com.jh.uimanager.editor",
+  "rootNamespace": "JH",
+  "references": [
+    "GUID:7f95b0762ef9dd84d9f19e2c4855f276"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
 }

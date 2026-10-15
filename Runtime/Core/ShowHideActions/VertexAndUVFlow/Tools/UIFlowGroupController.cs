@@ -1,3 +1,4 @@
+using Cysharp.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -275,7 +276,7 @@ namespace JH
         /// </summary>
         /// <param name="token">当前UI隐藏操作的取消令牌。</param>
         /// <returns>完整组隐藏动画任务。</returns>
-        protected override async JTask OnUIHideAsync(CancellationToken token)
+        protected override async UniTask OnUIHideAsync(CancellationToken token)
         {
             // 每轮异步隐藏只扫描一次层级，后续Tween帧只执行无分配缓存所有权检查。
             RefreshFlowHierarchy();
@@ -289,7 +290,7 @@ namespace JH
         /// </summary>
         /// <param name="token">当前UI显示操作的取消令牌。</param>
         /// <returns>完整组显示动画任务。</returns>
-        protected override async JTask OnUIShowAsync(CancellationToken token)
+        protected override async UniTask OnUIShowAsync(CancellationToken token)
         {
             // 每轮异步显示只扫描一次层级，保证新成员从动画第一帧进入统一组路径。
             RefreshFlowHierarchy();

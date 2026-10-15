@@ -1,3 +1,4 @@
+using Cysharp.Threading.Tasks;
 using System;
 using System.Collections;
 using System.Reflection;
@@ -150,10 +151,10 @@ namespace JH.Test_UIManager
             childUI.ShowAsyncActions += _ =>
             {
                 showActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
 
-            // 将JTask异常转为可在UnityTest主协程中断言的结果。
+            // 将UniTask异常转为可在UnityTest主协程中断言的结果。
             Task<Exception> operation = CaptureException(childUI.ShowAsync(CancellationToken.None));
             yield return WaitForTask(operation);
 
@@ -424,7 +425,7 @@ namespace JH.Test_UIManager
             var highUI = CreateUI("ShowingHigherUI", container.transform);
             highUI.MutexPriority = 1;
             var releaseHighAction = false;
-            highUI.ShowAsyncActions += _ => new JTask(() => releaseHighAction);
+            highUI.ShowAsyncActions += _ => UniTask.WaitUntil(() => releaseHighAction);
 
             // 先启动高优先级显示并等待它进入Showing。
             Task<Exception> highOperation = CaptureException(highUI.ShowAsync(CancellationToken.None));
@@ -468,7 +469,7 @@ namespace JH.Test_UIManager
             var highUI = CreateUI("PreemptingHigher", container.transform);
             highUI.MutexPriority = 1;
             var releaseLowAction = false;
-            lowUI.ShowAsyncActions += _ => new JTask(() => releaseLowAction);
+            lowUI.ShowAsyncActions += _ => UniTask.WaitUntil(() => releaseLowAction);
 
             // 先启动低优先级异步显示并让它进入Showing。
             Task<Exception> lowOperation = CaptureException(lowUI.ShowAsync(CancellationToken.None));
@@ -527,7 +528,7 @@ namespace JH.Test_UIManager
                     cancellationCallbackCount++;
                     lowUI.Show();
                 });
-                return new JTask(() => releaseOldShow);
+                return UniTask.WaitUntil(() => releaseOldShow);
             };
 
             // 启动旧高UI显示，并等待处理器完成取消回调登记。
@@ -582,7 +583,7 @@ namespace JH.Test_UIManager
                     cancellationCallbackCount++;
                     latestUI.Show();
                 });
-                return new JTask(() => releaseOldShow);
+                return UniTask.WaitUntil(() => releaseOldShow);
             };
 
             // 先使firstUI持有旧异步显示，再用同步请求触发取消回调重入。
@@ -632,7 +633,7 @@ namespace JH.Test_UIManager
             {
                 callbackRegistration = cancellationToken.Register(() =>
                     highUI.transform.SetParent(requestContainer.transform, false));
-                return new JTask(() => releaseOldShow);
+                return UniTask.WaitUntil(() => releaseOldShow);
             };
 
             // 启动旧异步显示后，以同步Show更新同一UI并触发关系变更回调。
@@ -682,7 +683,7 @@ namespace JH.Test_UIManager
             {
                 callbackRegistration = cancellationToken.Register(() =>
                     highUI.transform.SetParent(requestContainer.transform, false));
-                return new JTask(() => releaseOldShow);
+                return UniTask.WaitUntil(() => releaseOldShow);
             };
 
             // 第二个ShowAsync替代旧请求，并在Begin内部同步执行旧令牌取消回调。
@@ -726,7 +727,7 @@ namespace JH.Test_UIManager
             highUI.MutexPriority = 1;
             highUI.Show();
             var releaseHighHide = false;
-            highUI.HideAsyncActions += _ => new JTask(() => releaseHighHide);
+            highUI.HideAsyncActions += _ => UniTask.WaitUntil(() => releaseHighHide);
 
             // 启动高UI隐藏并等待其进入Hiding。
             Task<Exception> hideOperation = CaptureException(highUI.HideAsync(CancellationToken.None));
@@ -839,7 +840,7 @@ namespace JH.Test_UIManager
             // 子UI显示处理器忽略取消令牌，验证父隐藏的版本接管足以阻止旧请求提交。
             var releaseChildAction = false;
             var afterShowCount = 0;
-            childUI.ShowAsyncActions += _ => new JTask(() => releaseChildAction);
+            childUI.ShowAsyncActions += _ => UniTask.WaitUntil(() => releaseChildAction);
             childUI.AfterUIShowedEvent += () => afterShowCount++;
 
             // 启动子UI异步显示并等待进入Showing。
@@ -894,12 +895,12 @@ namespace JH.Test_UIManager
             lowChild.ShowAsyncActions += _ =>
             {
                 lowActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
             highChild.ShowAsyncActions += _ =>
             {
                 highActionCount++;
-                return JTask.CompletedTask;
+                return UniTask.CompletedTask;
             };
 
             // 异步显示父UI，由父级联批次选择同组默认子UI。
@@ -1101,10 +1102,10 @@ namespace JH.Test_UIManager
         /// <param name="cancellationToken">当前异步隐藏操作令牌。</param>
         /// <returns>延后一帧后以InvalidOperationException失败的任务。</returns>
         /// <exception cref="InvalidOperationException">延后一帧后始终抛出。</exception>
-        private static async JTask ThrowHideFailureAfterYield(CancellationToken cancellationToken)
+        private static async UniTask ThrowHideFailureAfterYield(CancellationToken cancellationToken)
         {
             // 先让HideAsync进入可观察的异步生命周期，再产生稳定业务故障。
-            await JTask.Yield(cancellationToken);
+            await UniTask.NextFrame(cancellationToken: cancellationToken);
 
             // 固定异常类型用于区分业务失败与调度器主动取消。
             throw new InvalidOperationException("测试异步隐藏故障。");

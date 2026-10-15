@@ -1,4 +1,5 @@
-﻿using System;
+using Cysharp.Threading.Tasks;
+using System;
 using System.Threading;
 
 namespace JH
@@ -43,13 +44,13 @@ namespace JH
         /// <summary>
         ///  暴露给外部，增加UI异步隐藏行为的事件,可以注册此事件以增加异步显示行为，比如fadeIn/fadeOut/音效/...等
         /// </summary>
-        event Func<CancellationToken, JTask> HideAsyncActions;
+        event Func<CancellationToken, UniTask> HideAsyncActions;
 
         /// <summary>
         ///  异步隐藏UI
         /// </summary>
         /// <param name="cancellationToken"> 取消异步的token</param>
         /// <returns> 返回异步任务</returns>
-        JTask HideAsync(CancellationToken cancellationToken);
+        UniTask HideAsync(CancellationToken cancellationToken);
     }
 }

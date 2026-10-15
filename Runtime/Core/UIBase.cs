@@ -1,3 +1,4 @@
+using Cysharp.Threading.Tasks;
 using System;
 using System.Collections.Generic;
 using System.Runtime.ExceptionServices;
@@ -132,12 +133,12 @@ namespace JH
         /// <summary>
         ///  当前的异步显示行为委托。
         /// </summary>
-        private Func<CancellationToken, JTask> _onUIShowAsyncEvent;
+        private Func<CancellationToken, UniTask> _onUIShowAsyncEvent;
 
         /// <summary>
         ///  当前的异步隐藏行为委托。
         /// </summary>
-        private Func<CancellationToken, JTask> _onUIHideAsyncEvent;
+        private Func<CancellationToken, UniTask> _onUIHideAsyncEvent;
 
         /// <summary>
         ///  当UI状态改变时触发，参数依次为原始状态和新状态。
@@ -185,7 +186,7 @@ namespace JH
         /// <summary>
         ///  增加UI异步隐藏行为的事件。
         /// </summary>
-        public event Func<CancellationToken, JTask> HideAsyncActions
+        public event Func<CancellationToken, UniTask> HideAsyncActions
         {
             add => _onUIHideAsyncEvent += value;
             remove => _onUIHideAsyncEvent -= value;
@@ -194,7 +195,7 @@ namespace JH
         /// <summary>
         ///  增加UI异步显示行为的事件。
         /// </summary>
-        public event Func<CancellationToken, JTask> ShowAsyncActions
+        public event Func<CancellationToken, UniTask> ShowAsyncActions
         {
             add => _onUIShowAsyncEvent += value;
             remove => _onUIShowAsyncEvent -= value;
@@ -323,7 +324,7 @@ namespace JH
         /// <param name="cancellationToken">取消当前显示操作的令牌。</param>
         /// <returns>表示完整显示生命周期的异步任务。</returns>
         /// <exception cref="OperationCanceledException">操作取消或被更新请求取代时抛出。</exception>
-        public async JTask ShowAsync(CancellationToken cancellationToken)
+        public async UniTask ShowAsync(CancellationToken cancellationToken)
         {
             // 预取消必须在任何状态和事件副作用发生前被观察。
             ThrowIfShowHideCancellationRequested(cancellationToken);
@@ -369,7 +370,7 @@ namespace JH
         /// <param name="cascadeParent">发起本次直接子UI级联显示的父UI。</param>
         /// <param name="cascadeParentOperationVersion">来源父UI本轮显示事务的显隐操作版本。</param>
         /// <returns>当前UI完整显示生命周期对应的异步任务。</returns>
-        private async JTask ShowFromParentAsync(CancellationToken cancellationToken, UIBase cascadeParent,
+        private async UniTask ShowFromParentAsync(CancellationToken cancellationToken, UIBase cascadeParent,
             int cascadeParentOperationVersion)
         {
             // 父操作预取消时不得改变子UI状态或Start初始化标记。
@@ -401,7 +402,7 @@ namespace JH
         /// <param name="cancellationToken">取消当前隐藏操作的令牌。</param>
         /// <returns>表示完整隐藏生命周期的异步任务。</returns>
         /// <exception cref="OperationCanceledException">操作取消或被更新请求取代时抛出。</exception>
-        public async JTask HideAsync(CancellationToken cancellationToken)
+        public async UniTask HideAsync(CancellationToken cancellationToken)
         {
             // 预取消必须在任何状态和事件副作用发生前被观察。
             ThrowIfShowHideCancellationRequested(cancellationToken);
@@ -439,7 +440,7 @@ namespace JH
         /// </summary>
         /// <param name="cancellationToken">传递给每个显示行为的操作令牌。</param>
         /// <returns>全部显示行为结束后的任务。</returns>
-        protected virtual async JTask OnUIShowAsync(CancellationToken cancellationToken)
+        protected virtual async UniTask OnUIShowAsync(CancellationToken cancellationToken)
         {
             // 显示前事件重入显隐时，不得再执行旧操作的同步或异步处理器。
             cancellationToken.ThrowIfCancellationRequested();
@@ -452,7 +453,7 @@ namespace JH
             }
 
             // 使用共享列表池保存本轮任务，避免每个UI长期持有任务集合。
-            var taskList = ListPool<JTask>.Get();
+            var taskList = ListPool<UniTask>.Get();
             try
             {
                 // GetInvocationList提供稳定的本轮委托快照。
@@ -462,10 +463,10 @@ namespace JH
                 {
                     // 取消后不再启动新行为，已启动行为仍由WhenAll完整观察。
                     if (cancellationToken.IsCancellationRequested) break;
-                    var showAction = (Func<CancellationToken, JTask>)invocationList[i];
+                    var showAction = (Func<CancellationToken, UniTask>)invocationList[i];
                     try
                     {
-                        // 普通委托可能在返回JTask之前同步抛错。
+                        // 普通委托可能在返回UniTask之前同步抛错。
                         taskList.Add(showAction.Invoke(cancellationToken));
                     }
                     catch (Exception exception)
@@ -481,7 +482,7 @@ namespace JH
                 try
                 {
                     // 组合器不使用生命周期令牌提前结束等待。
-                    await JTask.WhenAll(taskList);
+                    await UIAsync.WaitAll(taskList);
                 }
                 catch (Exception exception)
                 {
@@ -495,7 +496,7 @@ namespace JH
             finally
             {
                 // 成功、取消或异常时都归还临时任务列表。
-                ListPool<JTask>.Release(taskList);
+                ListPool<UniTask>.Release(taskList);
             }
         }
 
@@ -504,7 +505,7 @@ namespace JH
         /// </summary>
         /// <param name="cancellationToken">传递给每个隐藏行为的操作令牌。</param>
         /// <returns>全部隐藏行为结束后的任务。</returns>
-        protected virtual async JTask OnUIHideAsync(CancellationToken cancellationToken)
+        protected virtual async UniTask OnUIHideAsync(CancellationToken cancellationToken)
         {
             // 隐藏前事件重入显隐时，不得再执行旧操作的同步或异步处理器。
             cancellationToken.ThrowIfCancellationRequested();
@@ -517,7 +518,7 @@ namespace JH
             }
 
             // 使用共享列表池保存本轮任务。
-            var taskList = ListPool<JTask>.Get();
+            var taskList = ListPool<UniTask>.Get();
             try
             {
                 // GetInvocationList提供稳定的本轮委托快照。
@@ -527,10 +528,10 @@ namespace JH
                 {
                     // 取消后不再启动新行为，已启动行为仍由WhenAll完整观察。
                     if (cancellationToken.IsCancellationRequested) break;
-                    var hideAction = (Func<CancellationToken, JTask>)invocationList[i];
+                    var hideAction = (Func<CancellationToken, UniTask>)invocationList[i];
                     try
                     {
-                        // 普通委托可能在返回JTask之前同步抛错。
+                        // 普通委托可能在返回UniTask之前同步抛错。
                         taskList.Add(hideAction.Invoke(cancellationToken));
                     }
                     catch (Exception exception)
@@ -546,7 +547,7 @@ namespace JH
                 try
                 {
                     // 子任务自行传播异常，最终检查处理忽略令牌的行为。
-                    await JTask.WhenAll(taskList);
+                    await UIAsync.WaitAll(taskList);
                 }
                 catch (Exception exception)
                 {
@@ -560,7 +561,7 @@ namespace JH
             finally
             {
                 // 成功、取消或异常时都归还临时任务列表。
-                ListPool<JTask>.Release(taskList);
+                ListPool<UniTask>.Release(taskList);
             }
         }
 
@@ -695,7 +696,7 @@ namespace JH
         /// <param name="parentCascadeSource">父级联请求的直接发起父UI；普通显示传null。</param>
         /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；普通显示传-1。</param>
         /// <returns>本轮显示流程任务。</returns>
-        private async JTask ShowNotCheckStateAsync(CancellationToken cancellationToken, UIShowMode showMode,
+        private async UniTask ShowNotCheckStateAsync(CancellationToken cancellationToken, UIShowMode showMode,
             UIBase parentCascadeSource = null, int parentCascadeSourceOperationVersion = -1)
         {
             // 进入本轮操作前观察预取消和对象销毁。
@@ -731,7 +732,7 @@ namespace JH
                     showMode);
                 operationToken.ThrowIfCancellationRequested();
                 var showTask = OnUIShowAsync(operationToken);
-                await JTask.WhenAll(beforeTask, showTask);
+                await UIAsync.WaitAll(beforeTask, showTask);
 
                 // 异步显示行为等待期间层级可能变化，处理子树前使用最新兄弟关系收口。
                 await ReconcileCurrentShowSiblingsAsync(
@@ -813,7 +814,7 @@ namespace JH
         /// </summary>
         /// <param name="cancellationToken">调用方提供的取消令牌。</param>
         /// <returns>本轮隐藏流程任务。</returns>
-        private async JTask HideNotCheckStateAsync(CancellationToken cancellationToken)
+        private async UniTask HideNotCheckStateAsync(CancellationToken cancellationToken)
         {
             // 进入本轮操作前观察预取消和对象销毁。
             ThrowIfShowHideCancellationRequested(cancellationToken);
@@ -965,7 +966,7 @@ namespace JH
         /// <param name="operationCts">本轮异步显示操作取消源。</param>
         /// <param name="showMode">当前显示请求的来源模式。</param>
         /// <returns>相邻UI联动全部结束后的任务。</returns>
-        private async JTask BeforeUIShowAsyncInvoke(List<UIBase> siblings, List<UIBase> parents,
+        private async UniTask BeforeUIShowAsyncInvoke(List<UIBase> siblings, List<UIBase> parents,
             int operationVersion, CancellationTokenSource operationCts, UIShowMode showMode)
         {
             // 当前局部令牌贯穿兄弟、父链和本轮UI自身的全部异步关系任务。
@@ -1052,7 +1053,7 @@ namespace JH
         /// <param name="operationVersion">当前父UI的显隐操作版本。</param>
         /// <param name="operationCts">当前父UI本轮显示操作的取消源。</param>
         /// <returns>全部目标子UI按Hierarchy顺序完成后的任务。</returns>
-        private async JTask ShowChildrenWithParentAsyncInvoke(List<UIBase> children, int operationVersion,
+        private async UniTask ShowChildrenWithParentAsyncInvoke(List<UIBase> children, int operationVersion,
             CancellationTokenSource operationCts)
         {
             // 当前显示行为结束后再捕获直接子UI，允许异步行为在本轮中调整层级。
@@ -1520,7 +1521,7 @@ namespace JH
         /// <summary>
         ///  在全部已启动处理器结束后传播同步调用异常和异步任务异常。
         /// </summary>
-        /// <param name="invocationException">处理器返回JTask之前同步抛出的异常。</param>
+        /// <param name="invocationException">处理器返回UniTask之前同步抛出的异常。</param>
         /// <param name="taskException">已启动处理器任务产生的异常。</param>
         /// <exception cref="AggregateException">同步和异步路径同时失败时抛出。</exception>
         private static void ThrowHandlerExceptions(Exception invocationException, Exception taskException)
@@ -1561,7 +1562,7 @@ namespace JH
             {
                 // 过渡初态先收口为Hided，再通过公开异步入口重新执行准入。
                 HideNotCheckState();
-                _ = ShowAsync(destroyCancellationToken);
+                ShowAsync(destroyCancellationToken).Forget();
             }
             else if (State == UIState.Hiding)
             {
@@ -1571,7 +1572,7 @@ namespace JH
                 {
                     // 兼容原有Hiding初态，先恢复显示效果再异步完成隐藏。
                     ShowNotCheckState(UIShowMode.Normal);
-                    _ = HideAsync(destroyCancellationToken);
+                    HideAsync(destroyCancellationToken).Forget();
                 }
             }
         }

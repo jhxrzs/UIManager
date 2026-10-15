@@ -1210,7 +1210,7 @@ namespace JH
         /// <returns>首尾速度为零的平滑进度。</returns>
         public static float EvaluateFlowProgress(float linearProgress)
         {
-            // 三次SmoothStep没有额外弹性或过冲，便于与外部线性JTween稳定组合。
+            // 三次SmoothStep没有额外弹性或过冲，便于与线性UI过渡稳定组合。
             var progress = Mathf.Clamp01(linearProgress);
             return progress * progress * (3f - 2f * progress);
         }

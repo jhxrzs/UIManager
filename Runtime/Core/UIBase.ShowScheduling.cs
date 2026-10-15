@@ -1,3 +1,4 @@
+using Cysharp.Threading.Tasks;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
@@ -394,11 +395,11 @@ namespace JH
         /// <param name="operationVersion">当前显示操作版本。</param>
         /// <param name="operationCts">当前异步显示操作的取消源。</param>
         /// <returns>所有当前同组兄弟异步隐藏完成后的任务。</returns>
-        private async JTask ReconcileCurrentShowSiblingsAsync(List<UIBase> siblings, UIShowMode showMode,
+        private async UniTask ReconcileCurrentShowSiblingsAsync(List<UIBase> siblings, UIShowMode showMode,
             int operationVersion, CancellationTokenSource operationCts)
         {
             // 同一快照中的兄弟隐藏保持并行，快照结束后再处理动态换父产生的新竞争项。
-            var taskList = ListPool<JTask>.Get();
+            var taskList = ListPool<UniTask>.Get();
             try
             {
                 while (true)
@@ -426,13 +427,13 @@ namespace JH
                     }
 
                     // 已启动的兄弟任务必须全部被观察，任何失败都由当前显示调用方处理。
-                    await JTask.WhenAll(taskList);
+                    await UIAsync.WaitAll(taskList);
                 }
             }
             finally
             {
                 // 成功、取消和异常时都归还兄弟隐藏任务列表。
-                ListPool<JTask>.Release(taskList);
+                ListPool<UniTask>.Release(taskList);
             }
         }
 

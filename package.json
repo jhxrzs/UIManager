@@ -1,24 +1,28 @@
 {
   "name": "com.jh.uimanager",
-  "version": "1.0.1",
-  "displayName": "JH_UI\u7ba1\u7406\u5668",
-  "description": "\u7b80\u6613\u7684UI\u7ba1\u7406\u5668\u3002",
+  "version": "2.0.0",
+  "displayName": "UIManager",
+  "description": "基于 UniTask 的轻量级 Unity UI 管理库，支持父子联动、分组互斥、优先级抢占和可取消的异步显隐，内置缓动过渡。",
   "unity": "6000.0",
   "dependencies": {
-    "com.jh.jtask": "1.0.1",
-    "com.jh.jtween": "1.0.0",
     "com.unity.inputsystem": "1.19.0",
-    "com.unity.ugui": "1.0.0"
+    "com.unity.ugui": "2.0.0",
+    "com.cysharp.unitask": "2.5.11"
   },
   "author": {
-    "name": "\u91d1\u8f89",
+    "name": "金辉",
     "email": "2558170073@qq.com"
   },
   "samples": [
     {
-      "displayName": "\u57fa\u7840\u793a\u4f8b",
-      "description": "\u5c55\u793aUI\u7ba1\u7406\u5668\u57fa\u672c\u7528\u6cd5\u7684\u793a\u4f8b",
+      "displayName": "基础示例",
+      "description": "展示UI管理器基本用法的示例",
       "path": "Samples~/BasicExample"
     }
-  ]
+  ],
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/jhxrzs/UIManager.git",
+    "type": "git"
+  }
 }
