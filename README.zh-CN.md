@@ -45,7 +45,7 @@ UIManager 是一款简洁高效的 Unity UI 界面管理插件，专注于提供
 |-----------|---------|
 | `AlphaEffectController.cs` | 通过调节透明度实现显隐效果 |
 | `RectEffectController.cs` | 通过修改 Transform 实现显隐效果 |
-| `VertUIFlowController.cs` | 实现复杂的 UI 流式显隐行为 |
+| `UIFlowGroupController.cs` | 实现复杂的 UI 流式显隐行为 |
 
 #### 挂载步骤
 

@@ -108,6 +108,8 @@ private async UniTask PrepareAsync(CancellationToken cancellationToken)
 
 包包含 PlayMode 回归测试，覆盖生命周期、父子关系、抢占、取消、异常收尾和内部过渡。在宿主工程安装 Unity Test Framework，并在清单顶层加入以下字段后，可通过 Test Runner 运行：
 
+2026-10-15 已在独立的 Unity 6000.4.5f1 工程中验证：UniTask 2.5.11、uGUI 2.0.0，编译通过，60 项 PlayMode 测试全部通过。
+
 ```json
 "testables": ["com.jh.uimanager"]
 ```
