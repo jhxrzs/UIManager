@@ -216,6 +216,8 @@ public static class PanelOperations
 
 基于 `EffectControllerBase` 的进度过渡使用真实时间，`Time.timeScale == 0` 时仍可推进。可以分别配置显示和隐藏时长，以及 `Ease` 缓动曲线。
 
+`RectEffectController` 分别使用显示、隐藏的分项曲线，曲线进度沿本轮动画的起点走向终点。对应方向的全局曲线为 `NotSet` 时使用分项配置，否则只应用一次全局曲线，保留分项配置供切换回 `NotSet` 后使用。中途反向播放从当前实际姿态继续；编辑器进度预览在显示端与隐藏端之间线性取值。
+
 ### 自定义效果
 
 继承 `EffectControllerBase`，重写 `OnEffectAmountChanged(float value)`，将统一进度应用到目标属性：`0` 表示完全显示，`1` 表示完全隐藏。
