@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Cysharp.Threading.Tasks;
@@ -52,8 +51,8 @@ namespace JH.Test_UIManager
                 order.Add("D");
                 observedStates.Add(ui.State);
             });
-            ExpectNotificationError(eventName);
-            ExpectNotificationError(eventName);
+            ExpectNotificationError("InvalidOperationException: first subscriber failed");
+            ExpectNotificationError("ArgumentException: third subscriber failed");
             Application.LogCallback capture = (message, stack, type) =>
             {
                 if (type == LogType.Exception) reports.Add(message + "\n" + stack);
@@ -80,6 +79,7 @@ namespace JH.Test_UIManager
             StringAssert.Contains(ui.name, reports[0]);
             StringAssert.Contains(eventName, reports[0]);
             StringAssert.Contains("订阅方法", reports[0]);
+            StringAssert.Contains("UINotificationException", reports[0]);
             StringAssert.Contains("first subscriber failed", reports[0]);
             StringAssert.Contains("third subscriber failed", reports[1]);
             StringAssert.Contains(nameof(Notification_MultipleSubscriberFailures_ShouldContinueInOrderAndCompleteLifecycle),
@@ -117,7 +117,7 @@ namespace JH.Test_UIManager
                     observerCalls++;
                     observedState = ui.State;
                 });
-                ExpectNotificationError(eventName);
+                ExpectNotificationError("InvalidOperationException: async lifecycle notification failed");
 
                 var operation = CaptureException(showing
                     ? ui.ShowAsync(CancellationToken.None)
@@ -145,7 +145,7 @@ namespace JH.Test_UIManager
             ui.BeforeUIShowEvent += () => order.Add("B:" + ui.State);
             ui.ShowActions += () => order.Add("Show");
             ui.HideActions += () => order.Add("Hide");
-            ExpectNotificationError("BeforeUIShowEvent");
+            ExpectNotificationError("InvalidOperationException: queued notification failed");
 
             ui.Show();
 
@@ -171,7 +171,7 @@ namespace JH.Test_UIManager
                 throw new InvalidOperationException("snapshot notification failed");
             };
             ui.BeforeUIShowEvent += second;
-            ExpectNotificationError("BeforeUIShowEvent");
+            ExpectNotificationError("InvalidOperationException: snapshot notification failed");
 
             ui.Show();
             ui.Hide();
@@ -185,7 +185,7 @@ namespace JH.Test_UIManager
         {
             var ui = CreateUI("CanceledNotify", CreateObject("CanceledNotifyRoot").transform);
             ui.BeforeUIShowEvent += () => throw new OperationCanceledException("subscriber-local cancellation");
-            ExpectNotificationError("BeforeUIShowEvent");
+            ExpectNotificationError("OperationCanceledException: subscriber-local cancellation");
 
             var operation = CaptureException(ui.ShowAsync(CancellationToken.None));
             yield return WaitForTask(operation);
@@ -212,7 +212,7 @@ namespace JH.Test_UIManager
                 actionCalls++;
                 return UniTask.CompletedTask;
             };
-            ExpectNotificationError("BeforeUIShowEvent");
+            ExpectNotificationError("InvalidOperationException: notification failed after explicit cancellation");
 
             var operation = CaptureException(ui.ShowAsync(cancellation.Token));
             yield return WaitForTask(operation);
@@ -239,8 +239,8 @@ namespace JH.Test_UIManager
             hide.HideAsyncActions += _ => UniTask.FromException(hideFailure);
             show.AfterUIShowedEvent += () => afterShow++;
             hide.AfterUIHidedEvent += () => afterHide++;
-            ExpectNotificationError("BeforeUIShowEvent");
-            ExpectNotificationError("BeforeUIHideEvent");
+            ExpectNotificationError("ArgumentException: show notification failed");
+            ExpectNotificationError("ArgumentException: hide notification failed");
 
             var showOperation = CaptureException(show.ShowAsync(CancellationToken.None));
             var hideOperation = CaptureException(hide.HideAsync(CancellationToken.None));
@@ -270,9 +270,10 @@ namespace JH.Test_UIManager
             }
         }
 
-        private static void ExpectNotificationError(string eventName)
+        private static void ExpectNotificationError(string exceptionMessage)
         {
-            LogAssert.Expect(LogType.Exception, new Regex("UINotificationException:.*事件 " + eventName));
+            // Unity 将 InnerException 作为日志首行，包装异常的上下文位于展开后的异常栈中。
+            LogAssert.Expect(LogType.Exception, exceptionMessage);
         }
     }
 }
