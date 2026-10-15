@@ -18,31 +18,59 @@ namespace JH
         /// <param name="showMode">当前显示请求的来源模式。</param>
         /// <param name="parentCascadeSource">父级联请求的直接发起父UI；普通显示传null。</param>
         /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；普通显示传-1。</param>
+        /// <param name="isRevalidation">是否为已开始显示操作的准入复核，用于区分诊断信息。</param>
         /// <returns>显示请求可以进入状态和生命周期流程时返回true。</returns>
         private bool CanScheduleShow(UIShowMode showMode, UIBase parentCascadeSource = null,
-            int parentCascadeSourceOperationVersion = -1)
+            int parentCascadeSourceOperationVersion = -1, bool isRevalidation = false)
         {
             // 父级联豁免只在当前UI仍直属来源父UI且来源显示事务仍有效时成立。
-            if (showMode is UIShowMode.ParentCascade &&
-                (!parentCascadeSource ||
-                 transform.parent != parentCascadeSource.transform ||
-                 !parentCascadeSource.IsCurrentShowHideAction(parentCascadeSourceOperationVersion))) return false;
+            if (showMode is UIShowMode.ParentCascade)
+            {
+                if (!parentCascadeSource)
+                {
+                    LogShowRejection(ShowRejectionReason.CascadeSourceUnavailable, showMode, isRevalidation);
+                    return false;
+                }
+                if (transform.parent != parentCascadeSource.transform)
+                {
+                    LogShowRejection(ShowRejectionReason.CascadeParentChanged, showMode, isRevalidation,
+                        parentCascadeSource);
+                    return false;
+                }
+                if (!parentCascadeSource.IsCurrentShowHideAction(parentCascadeSourceOperationVersion))
+                {
+                    LogShowRejection(ShowRejectionReason.CascadeOperationReplaced, showMode, isRevalidation,
+                        parentCascadeSource);
+                    return false;
+                }
+            }
 
             // 父UI主动级联属于同一父级显示事务，不重复要求父级已经提交Showed。
             if (showMode is UIShowMode.Normal &&
                 parentShowPolicy is UIParentShowPolicy.RequireParentChainShowedForDirectShow &&
-                !IsRequiredParentChainShowed()) return false;
+                !IsRequiredParentChainShowed(out var blockingParent))
+            {
+                LogShowRejection(blockingParent ? ShowRejectionReason.RequiredParentNotReady :
+                    ShowRejectionReason.MissingRequiredParent, showMode, isRevalidation, blockingParent);
+                return false;
+            }
 
             // 更高优先级只在同父同组且仍持有有效显示权的兄弟之间阻止当前请求。
-            return !HasHigherPrioritySiblingHoldingMutex();
+            if (HasHigherPrioritySiblingHoldingMutex(out var blockingSibling))
+            {
+                LogShowRejection(ShowRejectionReason.HigherPrioritySibling, showMode, isRevalidation, blockingSibling);
+                return false;
+            }
+            return true;
         }
 
         /// <summary>
         ///  判断当前UI的连续父UI链是否存在并已经全部完成显示生命周期。
         /// </summary>
         /// <returns>存在直接父UI且整条连续父UI链均已初始化为Showed时返回true。</returns>
-        private bool IsRequiredParentChainShowed()
+        private bool IsRequiredParentChainShowed(out UIBase blockingParent)
         {
+            blockingParent = null;
             // 当前Transform没有直接父节点时无法满足显式父UI准入约束。
             var currentParent = transform.parent;
             if (!currentParent) return false;
@@ -57,7 +85,10 @@ namespace JH
                 if (!parentUI.gameObject.activeInHierarchy ||
                     !parentUI._isUIStateInitialized ||
                     parentUI.State is not UIState.Showed)
+                {
+                    blockingParent = parentUI;
                     return false;
+                }
 
                 // 移动到当前父UI的上一级Transform，准备继续检查祖先UI。
                 currentParent = currentParent.parent;
@@ -178,8 +209,9 @@ namespace JH
         ///  判断当前UI是否存在同父、同互斥组且仍持有更高显示权的兄弟UI。
         /// </summary>
         /// <returns>存在更高优先级兄弟仍持有有效显示权或预约时返回true。</returns>
-        private bool HasHigherPrioritySiblingHoldingMutex()
+        private bool HasHigherPrioritySiblingHoldingMutex(out UIBase blockingSibling)
         {
+            blockingSibling = null;
             // 使用独立的调度快照，使入口预约即使尚未激活GameObject也能参与仲裁。
             var siblings = ListPool<UIBase>.Get();
             try
@@ -197,7 +229,11 @@ namespace JH
                     if (sibling.mutexPriority <= mutexPriority) continue;
 
                     // 只有已经显示、执行有效隐藏或持有有效显示预约的兄弟才占用优先级。
-                    if (sibling.IsHoldingMutexPriority()) return true;
+                    if (sibling.IsHoldingMutexPriority())
+                    {
+                        blockingSibling = sibling;
+                        return true;
+                    }
                 }
 
                 // 当前没有更高优先级兄弟持有同一互斥组显示权。
@@ -335,7 +371,8 @@ namespace JH
             if (CanScheduleShow(
                     showMode,
                     parentCascadeSource,
-                    parentCascadeSourceOperationVersion)) return true;
+                    parentCascadeSourceOperationVersion,
+                    isRevalidation: true)) return true;
 
             // 新隐藏请求会递增版本并取消当前异步令牌，确保已启动显示行为能够完整收口。
             ExecuteHide();
