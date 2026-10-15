@@ -282,6 +282,8 @@ namespace JH.Test_UIManager
         [Test]
         public void Show_LongFiniteRequestChain_ShouldDrainWithoutRecursiveDispatch()
         {
+            // 本用例验证消费器不递归入栈，显式提高循环保护上限以覆盖长但有限的业务链。
+            using var limit = new LoopLimitScope(1024);
             var ui = CreateUI("FiniteChain", CreateObject("FiniteChainRoot").transform);
             var transitions = 0;
             ui.OnStateChanged += (_, state) =>

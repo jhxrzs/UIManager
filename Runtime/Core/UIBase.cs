@@ -288,7 +288,7 @@ namespace JH
         /// </summary>
         public void Show()
         {
-            UIOperationDispatcher.Run(ExecuteShow);
+            UIOperationDispatcher.Run(this, true, ExecuteShow);
         }
 
         /// <summary>执行普通显示；框架内部父链联动直接调用此入口。</summary>
@@ -301,6 +301,8 @@ namespace JH
             // 父链未就绪或更高优先级同组兄弟活跃时，本次请求保持零副作用拒绝。
             if (!CanScheduleShow(UIShowMode.Normal)) return;
 
+            UIOperationDispatcher.BeginBehavior(this, true);
+
             // 通过统一普通显示入口执行完整同步生命周期。
             ShowNotCheckState(UIShowMode.Normal);
         }
@@ -310,7 +312,7 @@ namespace JH
         /// </summary>
         public void Hide()
         {
-            UIOperationDispatcher.Run(ExecuteHide);
+            UIOperationDispatcher.Run(this, false, ExecuteHide);
         }
 
         /// <summary>执行隐藏；框架内部子树和互斥联动直接调用此入口。</summary>
@@ -325,6 +327,8 @@ namespace JH
                 return;
             }
 
+            UIOperationDispatcher.BeginBehavior(this, false);
+
             // 其余可见生命周期通过统一同步隐藏入口完整收口。
             HideNotCheckState();
         }
@@ -337,7 +341,7 @@ namespace JH
         /// <exception cref="OperationCanceledException">操作取消或被更新请求取代时抛出。</exception>
         public UniTask ShowAsync(CancellationToken cancellationToken)
         {
-            return UIOperationDispatcher.RunAsync(() => ExecuteShowAsync(cancellationToken), cancellationToken);
+            return UIOperationDispatcher.RunAsync(this, true, () => ExecuteShowAsync(cancellationToken), cancellationToken);
         }
 
         private async UniTask ExecuteShowAsync(CancellationToken cancellationToken)
@@ -350,6 +354,7 @@ namespace JH
             if (!CanScheduleShow(UIShowMode.Normal)) return;
 
             // 取消异常属于公开契约的一部分，不在此处吞掉。
+            UIOperationDispatcher.BeginBehavior(this, true);
             await UIOperationDispatcher.Continue(ShowNotCheckStateAsync(cancellationToken, UIShowMode.Normal));
         }
 
@@ -420,7 +425,7 @@ namespace JH
         /// <exception cref="OperationCanceledException">操作取消或被更新请求取代时抛出。</exception>
         public UniTask HideAsync(CancellationToken cancellationToken)
         {
-            return UIOperationDispatcher.RunAsync(() => ExecuteHideAsync(cancellationToken), cancellationToken);
+            return UIOperationDispatcher.RunAsync(this, false, () => ExecuteHideAsync(cancellationToken), cancellationToken);
         }
 
         private async UniTask ExecuteHideAsync(CancellationToken cancellationToken)
@@ -435,6 +440,7 @@ namespace JH
             }
 
             // 取消异常属于公开契约的一部分，不在此处吞掉。
+            UIOperationDispatcher.BeginBehavior(this, false);
             await UIOperationDispatcher.Continue(HideNotCheckStateAsync(cancellationToken));
         }
 
