@@ -2,6 +2,8 @@
 
 UIManager 是一款简洁高效的 Unity UI 界面管理插件，专注于提供便捷的 UI 显示隐藏管理功能。
 
+本仓库为基于 UniTask、内置缓动的 2.x 版本。与 1.x 不兼容，旧项目保持原依赖即可。完整迁移说明见 [README](README.md)。
+
 ## ⚙️ 安装指南
 
 将以下依赖添加到项目的 `manifest.json` 文件中：
@@ -9,10 +11,9 @@ UIManager 是一款简洁高效的 Unity UI 界面管理插件，专注于提供
 ```json
 {
   "dependencies": {
-    "com.jh.jtask": "https://gitee.com/wmzjzxyh/jtask.git",
-    "com.jh.jtween": "https://gitee.com/wmzjzxyh/jtween.git",
+    "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask#2.5.11",
     "com.unity.ugui": "2.0.0",
-    "com.jh.uimanager": "https://gitee.com/wmzjzxyh/uimanager.git"
+    "com.jh.uimanager": "https://github.com/jhxrzs/UIManager.git"
   }
 }
 ```
@@ -96,13 +97,13 @@ UIBase 提供了以下核心 API：
 |------|------|--------|
 | `Show()` | 直接显示 UI 面板 | void |
 | `Hide()` | 直接隐藏 UI 面板 | void |
-| `ShowAsync(CancellationToken)` | 异步显示 UI 面板 | JTask |
-| `HideAsync(CancellationToken)` | 异步隐藏 UI 面板 | JTask |
+| `ShowAsync(CancellationToken)` | 异步显示 UI 面板 | UniTask |
+| `HideAsync(CancellationToken)` | 异步隐藏 UI 面板 | UniTask |
 | `ShowWithParent` | 获取或设置当前 UI 是否随直接父 UI 显示 | bool |
 | `ParentShowPolicy` | 获取或设置外部直接显示时的父链策略 | UIParentShowPolicy |
 | `MutexPriority` | 获取或设置同父同组 UI 的抢占优先级 | int |
 
-> 💡 注意：`JTask` 可视为等同于 .NET 中的 `Task` 使用。异步显隐被取消时会向调用方抛出 `OperationCanceledException`，调用方应按标准异步取消流程处理。
+> 💡 注意：`UniTask` 通常按单次消费使用，不要对同一实例重复或并发等待。异步显隐被取消时会向调用方抛出 `OperationCanceledException`，调用方应按标准异步取消流程处理。
 
 ## ⚠️ 使用注意事项
 
@@ -133,4 +134,4 @@ UIBase 提供了以下核心 API：
 
 ---
 
-📢 如有任何问题或建议，欢迎通过 [Gitee 仓库](https://gitee.com/wmzjzxyh/uimanager) 提交 Issue 或 Pull Request！
+📢 如有任何问题或建议，欢迎通过 [Gitee 仓库](https://github.com/jhxrzs/UIManager) 提交 Issue 或 Pull Request！
