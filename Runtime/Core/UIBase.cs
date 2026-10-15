@@ -315,6 +315,27 @@ namespace JH
             UIOperationDispatcher.Run(this, false, ExecuteHide);
         }
 
+        /// <summary>交互切换作为一条请求入队，方向按出队时的状态确定。</summary>
+        internal void Switch()
+        {
+            UIOperationDispatcher.Run(this, null, () =>
+            {
+                if (!this) return;
+                // 直接进入本次生命周期，避免再次入队打乱后续请求的顺序。
+                if (State is UIState.Showed or UIState.Showing) ExecuteHide();
+                else ExecuteShow();
+            });
+        }
+
+        /// <summary>异步交互切换；返回任务跟踪实际选中的完整显隐生命周期。</summary>
+        internal UniTask SwitchAsync(CancellationToken cancellationToken)
+        {
+            return UIOperationDispatcher.RunAsync(this, null, () =>
+                State is UIState.Showed or UIState.Showing
+                    ? ExecuteHideAsync(cancellationToken)
+                    : ExecuteShowAsync(cancellationToken), cancellationToken);
+        }
+
         /// <summary>执行隐藏；框架内部子树和互斥联动直接调用此入口。</summary>
         private void ExecuteHide()
         {

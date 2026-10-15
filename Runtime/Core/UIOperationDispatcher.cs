@@ -35,14 +35,15 @@ namespace JH
         internal sealed class RequestContext
         {
             internal readonly UIBase Panel;
-            internal readonly bool IsShow;
+            // Switch 在入队时尚未确定方向，首次实际执行时再固定为 Show 或 Hide。
+            internal bool? IsShow;
             internal readonly RequestContext Parent;
             internal readonly int ExecutionLimit;
             internal readonly string PanelPath;
             internal readonly string Origin;
             internal bool HasStarted;
 
-            internal RequestContext(UIBase panel, bool isShow, RequestContext parent)
+            internal RequestContext(UIBase panel, bool? isShow, RequestContext parent)
             {
                 Panel = panel;
                 IsShow = isShow;
@@ -63,7 +64,7 @@ namespace JH
             Run(action, _currentRequest);
         }
 
-        internal static void Run(UIBase panel, bool isShow, Action action)
+        internal static void Run(UIBase panel, bool? isShow, Action action)
         {
             EnsureMainThread();
             Run(action, new RequestContext(panel, isShow, _currentRequest));
@@ -90,7 +91,7 @@ namespace JH
         }
 
         /// <summary>提交异步请求；消费器只启动操作，不等待动画，返回任务跟踪完整结果。</summary>
-        internal static UniTask RunAsync(UIBase panel, bool isShow, Func<UniTask> action,
+        internal static UniTask RunAsync(UIBase panel, bool? isShow, Func<UniTask> action,
             CancellationToken cancellationToken)
         {
             if (!PlayerLoopHelper.IsMainThread)
@@ -184,7 +185,11 @@ namespace JH
         {
             var request = _currentRequest;
             if (request == null || request.HasStarted ||
-                !ReferenceEquals(request.Panel, panel) || request.IsShow != isShow) return;
+                !ReferenceEquals(request.Panel, panel) ||
+                (request.IsShow.HasValue && request.IsShow.Value != isShow)) return;
+
+            // 切换请求与普通显隐请求共用同一条来源链，并按实际执行方向计数。
+            request.IsShow ??= isShow;
 
             var count = 0;
             for (var ancestor = request.Parent; ancestor != null; ancestor = ancestor.Parent)
@@ -219,7 +224,12 @@ namespace JH
             {
                 var node = chain[index];
                 if (path.Length > 0) path.Append("\n  → ");
-                path.Append(node.PanelPath).Append(node.IsShow ? ".Show" : ".Hide");
+                path.Append(node.PanelPath).Append(node.IsShow switch
+                {
+                    true => ".Show",
+                    false => ".Hide",
+                    null => ".Switch"
+                });
                 path.Append(ReferenceEquals(node, request) ? " [本次被阻止]" :
                     node.HasStarted ? " [已执行]" : " [未启动生命周期]");
             }

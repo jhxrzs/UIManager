@@ -61,15 +61,14 @@ namespace JH
             // 非切换行为无需继续处理。
             if (action != ShowHideAction.Switch) return;
 
-            // 已显示或正在显示时，切换行为应转为隐藏。
-            if (ui.State is UIState.Showed or UIState.Showing)
+            // 保留切换意图，实际轮到此请求时才按最新状态选择显隐方向。
+            if (IsAsync)
             {
-                ExecuteHide(ui);
+                ExecuteAsync(ui, ShowHideAction.Switch);
                 return;
             }
 
-            // 其余状态下，切换行为应转为显示。
-            ExecuteShow(ui);
+            ui.Switch();
         }
 
         /// <summary>
@@ -110,7 +109,7 @@ namespace JH
         ///  在输入事件边界等待并消费一次异步显隐行为。
         /// </summary>
         /// <param name="ui">需要执行显隐行为的UI。</param>
-        /// <param name="action">本次已经确定的显示或隐藏行为。</param>
+        /// <param name="action">本次提交的显示、隐藏或切换行为。</param>
         /// <remarks>
         ///  此方法是受控的async void事件边界，内部会处理显隐替换取消和业务异常。
         /// </remarks>
@@ -128,8 +127,14 @@ namespace JH
                     return;
                 }
 
-                // 当前入口只会接收已经确定的显示或隐藏行为，剩余分支执行异步隐藏。
-                await ui.HideAsync(cancellationToken);
+                if (action == ShowHideAction.ToHide)
+                {
+                    await ui.HideAsync(cancellationToken);
+                    return;
+                }
+
+                // 切换方向由队列执行时决定，任务仍跟踪完整生命周期。
+                await ui.SwitchAsync(cancellationToken);
             }
             catch (OperationCanceledException)
             {
