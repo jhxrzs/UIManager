@@ -1,12 +1,21 @@
 # UIManager
 
-基于 UniTask 的轻量级 Unity UI 管理库，支持父子界面联动、分组互斥、优先级抢占及可取消的异步显隐。内置缓动过渡，支持自定义效果，通过 Unity Package Manager 集成。
+UIManager 是一个基于 UniTask 的 Unity uGUI 界面管理库。通过组件配置父子联动、分组互斥、优先级抢占和过渡效果，使用同步或可取消的异步接口控制界面显隐。
 
-这是使用 UniTask 的 **2.x 版本**。异步返回类型与旧版不兼容；旧 Gitee 仓库和 JTask、JTween 独立包继续服务历史项目，升级由使用项目主动选择。
+## 功能
 
-## 安装
+- **显隐生命周期**：提供显示前、显示后、隐藏前、隐藏后及状态变化通知。
+- **父子联动**：支持补齐父界面显示状态、随父显示和多层级联。
+- **分组互斥**：同一父节点下的同组界面进行显示仲裁，支持优先级抢占。
+- **异步与取消**：基于 UniTask 执行显隐行为，处理调用方取消、对象销毁和操作替代。
+- **动态层级**：依据当前 Transform 层级推导关系，支持运行时新增、移除和换父。
+- **过渡与交互**：提供透明度、RectTransform、颜色等效果，以及按钮、Toggle 和键盘交互配置。
 
-要求 Unity 6000.0 或更新版本。在项目的 `Packages/manifest.json` 中加入以下依赖，并保留原有的其他条目：
+## 环境与安装
+
+要求 Unity 6000.0 及以上版本，使用 uGUI。
+
+在项目的 `Packages/manifest.json` 中加入以下依赖，保留项目已有的其他条目：
 
 ```json
 {
@@ -17,15 +26,16 @@
 }
 ```
 
-先安装 UniTask，再安装 UIManager。UniTask 固定在 2.5.11；UIManager 发布稳定版本后，也建议在安装地址后追加对应 Git 标签或提交 SHA。
+也可以在 Unity Package Manager 中通过 Git URL 依次安装 UniTask 和 UIManager。uGUI、Input System 和 Animation 模块会随包依赖安装。使用键盘交互时，需要在项目设置中启用 Input System。
 
-uGUI、Input System 和 Animation 模块由包依赖引入，不需要安装 JTask、JTween 或 DOTween。键盘交互需要在项目设置中启用 Input System。默认安装不要求 Odin Inspector。
+在自定义程序集内使用 UIManager 时，添加 `com.jh.uimanager.runtime` 和 `UniTask` 程序集引用。安装到正式项目时，建议在 Git URL 后指定标签或提交 SHA，以固定依赖版本。
 
 ## 快速开始
 
-1. 在面板 GameObject 上添加 `UIBase`。
-2. 添加 `AlphaEffectController` 或 `RectEffectController`，配置初始状态、显隐时长和曲线。
-3. 使用同步或异步 API 控制面板。
+1. 在 Canvas 下创建一个面板，添加 `UIBase` 组件。
+2. 添加效果控制器，例如 `AlphaEffectController`。
+3. 在 Inspector 中配置初始状态、显隐时长和缓动曲线。
+4. 通过 `Show()`、`Hide()` 或异步接口控制面板。
 
 ```csharp
 using System.Threading;
@@ -37,85 +47,175 @@ public class PanelExample : MonoBehaviour
 {
     [SerializeField] private UIBase panel;
 
-    public async UniTask OpenAsync(CancellationToken cancellationToken)
+    public void ShowPanel()
+    {
+        panel.Show();
+    }
+
+    public void HidePanel()
+    {
+        panel.Hide();
+    }
+
+    public async UniTask ShowPanelAsync(CancellationToken cancellationToken)
     {
         await panel.ShowAsync(cancellationToken);
     }
 
-    public void CloseImmediately()
+    public async UniTask HidePanelAsync(CancellationToken cancellationToken)
     {
-        panel.Hide();
+        await panel.HideAsync(cancellationToken);
     }
 }
 ```
 
-在 Package Manager 中导入“基础示例”可查看示例场景。完整层级和配置说明见 [使用指南](README.zh-CN.md)。
+同步接口立即应用对应的显隐行为；异步接口等待行为结束后再完成本轮生命周期。没有异步行为时，异步接口会执行对应的同步行为。
 
-## 关键行为
+`UIBase` 负责生命周期和界面关系，具体表现由效果控制器或自定义行为提供。需要直接配置按钮、Toggle 和键盘交互时，可使用 `UIBaseWithShowHideInteraction`。
 
-- 显示生命周期为 `Hided → Showing → Showed`；隐藏为 `Showed → Hiding → Hided`。保留原有 `Hided` 命名。
-- 关系依据当前 Transform 层级推导，支持运行时新增、移除和换父。
-- 同一直接父节点、互斥组相同的 UI 进行仲裁：相等优先级后请求获胜，更高优先级的有效持有者可拒绝低优先级请求。不同父节点的相同组号互不影响。
-- `ShowWithParent` 使直接子 UI 在父 UI 自身行为结束后自动显示，并可向下级联。父 UI 的完成通知会等待级联操作结束。
-- 直接显示子 UI 默认自动补齐连续父 UI 链，也可配置为要求父 UI 链已经显示。遇到没有 `UIBase` 的普通 Transform 时停止向上扫描。
-- 准入拒绝的 `ShowAsync()` 正常结束且无副作用。需要区分是否成功显示时，等待后检查 `State`。
+## 生命周期
+
+| 状态 | 含义 |
+| --- | --- |
+| `Hided` | 已隐藏 |
+| `Showing` | 正在显示 |
+| `Showed` | 已显示 |
+| `Hiding` | 正在隐藏 |
+
+显示流程为 `Hided → Showing → Showed`，隐藏流程为 `Showed → Hiding → Hided`。被取消、被其他操作取代或执行失败的操作，不会继续提交成功的完成状态。
+
+| 事件 | 用途 |
+| --- | --- |
+| `BeforeUIShowEvent` / `AfterUIShowedEvent` | 显示前与显示完成通知 |
+| `BeforeUIHideEvent` / `AfterUIHidedEvent` | 隐藏前与隐藏完成通知 |
+| `OnStateChanged` | 状态变化通知，参数为原状态和新状态 |
+| `ShowActions` / `HideActions` | 同步显隐行为 |
+| `ShowAsyncActions` / `HideAsyncActions` | 异步显隐行为，委托类型为 `Func<CancellationToken, UniTask>` |
+
+## 父子联动
+
+界面关系以当前 Transform 层级为准，无需额外维护父子和兄弟列表。
+
+### 随父显示
+
+直接子界面勾选 `Show With Parent` 后，会在父界面自身的显示行为完成后自动显示。每一层都可以独立配置，形成多层级联。父界面的显示完成通知会等待这部分子界面流程结束。
+
+未勾选的直接子界面保持原状态。父界面已经处于 `Showed` 时，再次调用 `Show()` 会直接返回，不会恢复被手动隐藏的子界面。
+
+需要同时显示的多个子界面应使用不同互斥组；随父显示仍遵守分组互斥和优先级规则。
+
+### 直接显示子界面
+
+通过 `Parent Show Policy` 配置直接显示子界面时的准入条件：
+
+| 策略 | 行为 |
+| --- | --- |
+| `AutoShowParentChain` | 自动从上到下补齐连续父界面链的显示生命周期 |
+| `RequireParentChainShowedForDirectShow` | 要求直接父节点挂载 `UIBase`，且连续父界面链均已初始化、在层级中激活并处于 `Showed` |
+
+父链扫描遇到没有 `UIBase` 的普通 Transform 时停止。严格父链条件未满足时，显示请求不会改变状态、隐藏兄弟界面或触发显示通知。
+
+随父显示由父界面发起，不受外部直接显示的父链准入条件限制。
+
+## 分组互斥与优先级
+
+互斥作用于同一直接父节点下、互斥组相同的界面。不同父节点的相同组号互不影响，同一父节点下的不同互斥组可以同时显示。
+
+- **相同优先级**：后接受的显示请求获胜。
+- **不同优先级**：持有显示权的界面可以拒绝优先级严格低于自己的请求。
+- **已隐藏的界面**：不会预占互斥组。
+- **隐藏失败或取消**：不会继续持有显示权，后续获准请求会将残留过渡状态收口为 `Hided`。
+
+Hierarchy 中会显示“互斥组/抢占优先级 状态”标记。`H` 表示隐藏或隐藏中，`S` 表示显示或显示中。
+
+被准入仲裁拒绝的 `ShowAsync()` 会正常结束且不产生副作用。调用方需要确认界面是否已显示时，应在等待结束后检查 `State`。
 
 ## 异步与取消
 
-公开异步 API 返回 `UniTask`，异步行为事件为 `Func<CancellationToken, UniTask>`。
+显隐接口接收 `CancellationToken`。调用方取消、界面对象销毁，或当前操作被后续显隐操作取代时，通过 `OperationCanceledException` 传播取消。
 
 ```csharp
-private async UniTask PrepareAsync(CancellationToken cancellationToken)
-{
-    await UniTask.NextFrame(cancellationToken: cancellationToken);
-    // 加载数据或执行自定义行为。
-}
+using System;
+using System.Threading;
+using Cysharp.Threading.Tasks;
+using JH;
 
-// 在相应生命周期中注册，并使用同一方法引用取消注册。
-// panel.ShowAsyncActions += PrepareAsync;
-// panel.ShowAsyncActions -= PrepareAsync;
+public static class PanelOperations
+{
+    public static async UniTask ShowAsync(UIBase panel, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await panel.ShowAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // 按业务需要处理本次显示取消。
+        }
+    }
+}
 ```
 
-预取消不会启动行为或改变状态。调用方取消、对象销毁或新请求取代旧请求时，以 `OperationCanceledException` 传播取消；旧操作不能覆盖新操作的完成状态。
+异步行为需要主动观察传入的令牌。UIManager 会等待已经启动的并行行为全部结束，再报告失败；多个失败会聚合报告，全部属于取消时传播取消异常。忽略令牌的行为会继续执行，结束后仍会校验本轮操作是否有效。
 
-已启动的并行行为全部被观察，结束后才传播失败；多个失败聚合报告，全部属于取消时传播取消异常。处理器需要主动观察令牌；忽略令牌的行为会继续执行，UIManager 会等待它结束，再校验本轮操作。
+预取消的请求不会启动行为、改变状态或触发通知。`UniTask` 通常按单次消费使用，不要直接对同一实例重复或并发等待；需要共享结果时，请按 UniTask 文档选择保留或转换机制。
 
-`UniTask` 按单次消费使用，不要对同一实例重复或并发 `await`；共享结果应按 UniTask 文档使用保留或转换机制。业务调用方负责处理预期取消和其他异常。
-
-## 内置效果与扩展
+## 内置效果
 
 | 控制器 | 用途 |
 | --- | --- |
-| `AlphaEffectController` | 透明度显隐 |
+| `AlphaEffectController` | 透明度过渡 |
 | `RectEffectController` | 位置、旋转、缩放、尺寸和轴心过渡 |
 | `ColorEffectController` | 颜色过渡 |
-| `AnimController` | Unity Animation 动画 |
+| `AnimController` | 播放 Unity Animation 动画 |
 | `UIFlowGroupController` | UI 顶点与 UV 流式效果 |
 
-继承 `EffectControllerBase` 并重写 `OnEffectAmountChanged(float value)` 可应用自定义效果，进度 `0` 为显示、`1` 为隐藏。
+基于 `EffectControllerBase` 的进度过渡使用真实时间，`Time.timeScale == 0` 时仍可推进。可以分别配置显示和隐藏时长，以及 `Ease` 缓动曲线。
 
-内置进度过渡使用真实时间，游戏暂停时仍可推进。推进器和缓动计算为程序集内部实现；`Ease` 枚举公开用于配置，保留原有枚举数值含义。本包不对外提供通用 Tween API。
+### 自定义效果
 
-## 从 1.x 迁移
+继承 `EffectControllerBase`，重写 `OnEffectAmountChanged(float value)`，将统一进度应用到目标属性：`0` 表示完全显示，`1` 表示完全隐藏。
 
-1. 在使用项目的分支中把 UIManager 地址改为本仓库，安装 UniTask。历史项目无需升级。
-2. 将自定义异步显隐方法的返回类型由 `JTask` 改为 `UniTask`，添加 `using Cysharp.Threading.Tasks;`，同步调整程序集引用。
-3. UIManager 不再依赖 JTask、JTween。若项目其他代码仍使用这些包，先完成那些调用的迁移，再决定是否移除依赖。
-4. 项目只安装一个版本的 `com.jh.uimanager`。新版保留同一包标识、命名空间和既有 UI 脚本 GUID，用于升级现有场景，不支持新旧版本同时安装。
-5. 直接调用 JTween、`EaseFunctionNumeric` 或 `ITweenData<T>` 的业务代码需要单独迁移；新版的扩展入口为 UI 生命周期与效果控制器。
+```csharp
+using JH;
+using UnityEngine;
 
-## 测试
+public class ScaleEffectController : EffectControllerBase
+{
+    protected override void OnEffectAmountChanged(float value)
+    {
+        transform.localScale = Vector3.one * (1f - value);
+    }
+}
+```
 
-包包含 PlayMode 回归测试，覆盖生命周期、父子关系、抢占、取消、异常收尾和内部过渡。在宿主工程安装 Unity Test Framework，并在清单顶层加入以下字段后，可通过 Test Runner 运行：
+基类负责进度推进、取消和显隐事件订阅。需要更复杂的异步行为时，也可以通过 `ShowAsyncActions`、`HideAsyncActions` 注册处理器，并在适当的生命周期解除订阅。
 
-2026-10-15 已在独立的 Unity 6000.4.5f1 工程中验证：UniTask 2.5.11、uGUI 2.0.0，编译通过，60 项 PlayMode 测试全部通过。
+## 常用 API
+
+| 成员 | 作用 |
+| --- | --- |
+| `Show()` / `Hide()` | 同步显隐 |
+| `ShowAsync(CancellationToken)` / `HideAsync(CancellationToken)` | 可取消的异步显隐，返回 `UniTask` |
+| `State` | 当前生命周期状态 |
+| `ShowWithParent` | 是否随直接父界面显示 |
+| `ParentShowPolicy` | 直接显示时的父链准入策略 |
+| `MutexPriority` | 同父同组界面的抢占优先级 |
+
+## 示例与测试
+
+在 Unity Package Manager 中选择 UIManager，导入“基础示例”，打开其中的 `TestUIManager.unity` 场景即可体验。运行时也可以通过 `UIBase` 组件的上下文菜单触发显隐操作。
+
+包内包含生命周期、动态层级、抢占、取消、异常收尾和进度过渡的 PlayMode 测试。运行测试时，在宿主工程安装 Unity Test Framework，并在 `Packages/manifest.json` 的顶层加入：
 
 ```json
 "testables": ["com.jh.uimanager"]
 ```
 
-## 来源与许可
+随后在 Unity Test Runner 中运行 PlayMode 测试。
 
-本仓库保留 [原 UIManager](https://gitee.com/wmzjzxyh/uimanager) 的 Git 历史，迁移起点为 `6d9c8ef`。内置曲线来自作者自研 [JTween](https://gitee.com/wmzjzxyh/jtween)，来源提交为 `8e1fa29`。
+## 许可证与反馈
 
-UIManager 使用 [MIT License](LICENSE)。[UniTask](https://github.com/Cysharp/UniTask) 是独立 MIT 许可依赖，通过包管理安装，源码未内置于本仓库；分发时应保留所包含第三方组件的版权与许可声明。
+UIManager 使用 [MIT License](LICENSE)。UniTask 的许可与文档见 [官方仓库](https://github.com/Cysharp/UniTask)。
+
+问题反馈和功能建议请提交至 [GitHub Issues](https://github.com/jhxrzs/UIManager/issues)。
