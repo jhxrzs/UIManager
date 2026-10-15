@@ -73,6 +73,8 @@ public class PanelExample : MonoBehaviour
 
 `UIBase` 负责生命周期和界面关系，具体表现由效果控制器或自定义行为提供。需要直接配置按钮、Toggle 和键盘交互时，可使用 `UIBaseWithShowHideInteraction`。
 
+配置的按钮、Toggle 监听会在面板销毁时自动解除，隐藏时保留，不影响控件上的其他监听。直接使用交互实体时，重复调用 `Init(panel)` 会先解除旧绑定；不再使用时调用 `Unbind()` 释放监听。
+
 ## 生命周期
 
 | 状态 | 含义 |

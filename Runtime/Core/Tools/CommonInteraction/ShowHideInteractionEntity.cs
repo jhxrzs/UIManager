@@ -27,6 +27,11 @@ namespace JH
         /// <param name="ui">需要执行显隐行为的UI。</param>
         public abstract void Init(UIBase ui);
 
+        /// <summary>解除当前交互的绑定；重复调用安全，不影响控件上的其他监听。</summary>
+        public virtual void Unbind()
+        {
+        }
+
         /// <summary>
         ///  按照当前配置执行显隐行为。
         /// </summary>
@@ -44,6 +49,9 @@ namespace JH
         /// <param name="action">本次需要执行的显隐行为。</param>
         protected void Execute(UIBase ui, ShowHideAction action)
         {
+            // 同一轮控件通知的前序监听可能已经销毁面板，旧通知快照仍可能调用到这里。
+            if (!ui) return;
+
             // 显示行为统一进入显示方法，避免各类输入重复维护同步与异步分支。
             if (action == ShowHideAction.ToShow)
             {

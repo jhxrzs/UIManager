@@ -81,12 +81,14 @@ namespace JH
         }
 
         /// <summary>
-        ///  Unity销毁当前UI时解除全局输入回调。
+        ///  Unity销毁当前UI时解除控件监听及全局输入回调。
         /// </summary>
         protected virtual void OnDestroy()
         {
             // 静态事件必须主动解除，避免Input System继续持有已经销毁的UI。
             InputSystem.onAfterUpdate -= OnInputSystemAfterUpdate;
+            foreach (var buttonEntity in buttonInteraction) buttonEntity?.Unbind();
+            foreach (var toggleEntity in toggleInteraction) toggleEntity?.Unbind();
         }
 
 #if UNITY_EDITOR
