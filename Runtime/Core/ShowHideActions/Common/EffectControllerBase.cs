@@ -55,8 +55,16 @@ namespace JH
         /// <summary>
         ///  获取CanvasGroup组件
         /// </summary>
-        protected CanvasGroup CanvasGroup =>
-            canvasGroup ?? GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+        protected CanvasGroup CanvasGroup
+        {
+            get
+            {
+                // Unity 已销毁对象也按缺失引用处理，补查结果写回缓存。
+                if (!canvasGroup) canvasGroup = GetComponent<CanvasGroup>();
+                if (!canvasGroup) canvasGroup = gameObject.AddComponent<CanvasGroup>();
+                return canvasGroup;
+            }
+        }
 
         /// <summary>
         ///  动效进度
@@ -76,6 +84,9 @@ namespace JH
         /// </summary>
         protected virtual void Awake()
         {
+            // 保留编辑器已缓存的引用；运行时 AddComponent 或缺失缓存时只补查一次。
+            if (!uiBase) uiBase = GetComponent<UIBase>();
+            _ = CanvasGroup;
             uiBase.ShowAsyncActions += OnUIShowAsync;
             uiBase.HideAsyncActions += OnUIHideAsync;
             uiBase.ShowActions += OnUIShow;

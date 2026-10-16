@@ -241,6 +241,8 @@ public static class PanelOperations
 
 基于 `EffectControllerBase` 的进度过渡使用真实时间，`Time.timeScale == 0` 时仍可推进。可以分别配置显示和隐藏时长，以及 `Ease` 缓动曲线。
 
+动效组件可以在运行时通过 `AddComponent` 添加。基类在 `Awake` 中只对缺失的 `UIBase`、`CanvasGroup` 引用补查并缓存，已有引用继续使用；编辑器仍通过 `OnValidate` 缓存引用和预览效果。颜色动效需要对象上已有具体的 `Graphic`（如 `Image`），矩形动效需要 `RectTransform` 并配置显示、隐藏目标。`AnimController` 自动补齐 `Animation` 组件；尚未配置默认片段时不采样动画，配置后即可使用。
+
 `RectEffectController` 分别使用显示、隐藏的分项曲线，曲线进度沿本轮动画的起点走向终点。对应方向的全局曲线为 `NotSet` 时使用分项配置，否则只应用一次全局曲线，保留分项配置供切换回 `NotSet` 后使用。中途反向播放从当前实际姿态继续；编辑器进度预览在显示端与隐藏端之间线性取值。
 
 ### 自定义效果

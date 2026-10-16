@@ -29,7 +29,14 @@ namespace JH
         /// <summary>
         ///  获取应用色彩特效的Graphic组件
         /// </summary>
-        private Graphic Graphic => graphic ?? GetComponent<Graphic>();
+        private Graphic Graphic
+        {
+            get
+            {
+                if (!graphic) graphic = GetComponent<Graphic>();
+                return graphic;
+            }
+        }
 
         /// <summary>
         ///  当动效进度改变时，在显示色彩值和隐藏色彩值之间进行插值
