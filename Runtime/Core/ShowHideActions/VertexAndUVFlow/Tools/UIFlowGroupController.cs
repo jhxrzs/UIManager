@@ -758,8 +758,16 @@ namespace JH
 
                 foreach (var member in membersToDetach)
                 {
-                    // 前一个清理回调可销毁或迁移后续成员；成员内部的所有者检查保护新组。
-                    if (member) member.DetachGroupController(this);
+                    try
+                    {
+                        // 前一个清理回调可销毁或迁移后续成员；成员内部的所有者检查保护新组。
+                        if (member) member.DetachGroupController(this);
+                    }
+                    catch (System.Exception exception)
+                    {
+                        // 单个Graphic的业务回调失败不能阻断其余成员恢复；保留原异常和堆栈。
+                        Debug.LogException(exception, this);
+                    }
                 }
             }
             finally
