@@ -357,6 +357,12 @@ namespace JH
         /// <summary>执行隐藏；框架内部子树和互斥联动直接调用此入口。</summary>
         private void ExecuteHide()
         {
+            ExecuteHide(null);
+        }
+
+        /// <summary>递归隐藏沿用本轮子树入口资格，避免前序回调失活祖先后漏掉后代。</summary>
+        private void ExecuteHide(UIHideContext hideContext)
+        {
             if (!this) return;
             // 已隐藏且没有处于入口重入窗口的显示预约时无需执行生命周期。
             if (State is UIState.Hided)
@@ -369,7 +375,7 @@ namespace JH
             UIOperationDispatcher.BeginBehavior(this, false);
 
             // 其余可见生命周期通过统一同步隐藏入口完整收口。
-            HideNotCheckState();
+            HideNotCheckState(hideContext);
         }
 
         /// <summary>
@@ -716,8 +722,14 @@ namespace JH
         /// <summary>
         ///  执行不带状态短路的同步隐藏流程。
         /// </summary>
-        private void HideNotCheckState()
+        private void HideNotCheckState(UIHideContext hideContext = null)
         {
+            // 在取消旧操作的回调前保留子树资格；递归调用共用上下文，由最外层释放。
+            using var ownedHideContext = hideContext == null ? UIHideContext.Capture(this) : null;
+            hideContext ??= ownedHideContext;
+            // 后续分支可能刚加入活动子节点；在取消该分支旧操作前补齐这些新关系。
+            if (ownedHideContext == null) hideContext.CaptureChildren(this);
+
             // 先登记新版本再取消旧异步操作。
             var operationVersion = BeginSynchronousShowHideAction();
 
@@ -733,8 +745,8 @@ namespace JH
                 if (!IsCurrentShowHideAction(operationVersion)) return;
 
                 // 在生命周期开始时捕获直接子UI快照。
-                FindChildren(children);
-                if (!BeforeUIHideInvoke(children, operationVersion)) return;
+                FindChildren(children, hideContext);
+                if (!BeforeUIHideInvoke(children, operationVersion, hideContext)) return;
 
                 // 执行当前面板自身的同步隐藏行为。
                 OnUIHide();
@@ -880,6 +892,9 @@ namespace JH
             // 进入本轮操作前观察预取消和对象销毁。
             ThrowIfShowHideCancellationRequested(cancellationToken);
 
+            // 取消旧操作也可能失活祖先，必须在任何业务回调前保留本轮资格。
+            using var hideContext = UIHideContext.Capture(this);
+
             // 在隐藏前事件发生前登记本轮操作，修复事件重入覆盖。
             var operationCts = BeginAsynchronousShowHideAction(cancellationToken, out var operationVersion);
 
@@ -892,9 +907,12 @@ namespace JH
             try
             {
                 // 捕获一次直接子UI关系并沿用到隐藏前流程结束。
-                FindChildren(children);
-                if (!BeforeUIHideInvoke(children, operationVersion, operationCts))
+                FindChildren(children, hideContext);
+                if (!BeforeUIHideInvoke(children, operationVersion, hideContext, operationCts))
                     ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
+
+                // 子树联动已同步结束，动画等待期间不保留层级引用或传递旧资格。
+                hideContext.Dispose();
 
                 // Before事件可能重入，执行动画前再次校验本轮身份。
                 ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
@@ -940,9 +958,10 @@ namespace JH
         /// </summary>
         /// <param name="children">本轮捕获的直接子UI快照。</param>
         /// <param name="operationVersion">本轮显隐操作版本。</param>
+        /// <param name="hideContext">当前递归隐藏保留的子树入口资格。</param>
         /// <param name="operationCts">异步流程的本轮取消源；同步流程传null。</param>
         /// <returns>本轮操作仍为最新请求时返回true。</returns>
-        private bool BeforeUIHideInvoke(List<UIBase> children, int operationVersion,
+        private bool BeforeUIHideInvoke(List<UIBase> children, int operationVersion, UIHideContext hideContext,
             CancellationTokenSource operationCts = null)
         {
             // 按快照顺序隐藏仍然属于当前UI的直接子节点。
@@ -950,7 +969,7 @@ namespace JH
             {
                 var eachChild = children[i];
                 if (!IsCurrentChild(eachChild)) continue;
-                eachChild.ExecuteHide();
+                eachChild.ExecuteHide(hideContext);
 
                 // 子UI回调可能重入当前UI。
                 if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return false;
@@ -1762,7 +1781,8 @@ namespace JH
         ///  将当前需要参与父隐藏联动的直接子UI写入指定快照列表。
         /// </summary>
         /// <param name="children">接收直接子UI的可复用列表。</param>
-        private void FindChildren(List<UIBase> children)
+        /// <param name="hideContext">补充本轮较早回调失活前已经取得的父子关系资格。</param>
+        private void FindChildren(List<UIBase> children, UIHideContext hideContext)
         {
             // 只扫描直接子Transform，避免遍历整棵子树。
             children.Clear();
@@ -1772,8 +1792,13 @@ namespace JH
                 if (!child.TryGetComponent<UIBase>(out var childUI)) continue;
 
                 // 父隐藏除活跃子UI外，还需取消尚未激活GameObject的显示预约。
-                if (child.gameObject.activeInHierarchy || childUI.IsCurrentShowAction())
+                if (child.gameObject.activeInHierarchy || childUI.IsCurrentShowAction() ||
+                    hideContext.Contains(this, childUI))
+                {
                     children.Add(childUI);
+                    // 保留原扫描时点对新活动节点的发现，并在其回调前补齐新分支的资格。
+                    hideContext.Include(this, childUI);
+                }
             }
         }
 
