@@ -14,6 +14,9 @@ namespace JH
     {
         private EffectSerializedRectTransform _transitionFrom;
         private float _transitionFromAmount;
+        private float _transitionProgress;
+        private float _transitionEasedProgress;
+        private Ease _transitionGlobalEase;
         private bool _isShowing;
         private bool _isTransitioning;
         private int _transitionVersion;
@@ -197,20 +200,34 @@ namespace JH
             // 反向播放及取消后重试均从当前实际姿态开始，不将进度直接套到另一条曲线上。
             _transitionFrom = EffectSerializedRectTransform.GetInstance(transform as RectTransform);
             _transitionFromAmount = EffectAmount;
+            _transitionGlobalEase = isShowing ? showEase : hideEase;
             _isShowing = isShowing;
             _isTransitioning = true;
             var version = ++_transitionVersion;
             try
             {
-                // 基类继续负责时长、全局曲线、进度、交互开关以及取消检查。
-                if (isShowing) await base.OnUIShowAsync(token);
-                else await base.OnUIHideAsync(token);
+                // 使用独立的时间进度，不能从已钳制的 EffectAmount 反推曲线过冲。
+                await UITransition.RunAsync(0f, 1f, progress =>
+                {
+                    if (_transitionVersion == version) ApplyTransitionProgress(progress);
+                }, isShowing ? ShowDuration : HideDuration, token, Ease.Linear);
             }
             finally
             {
                 // 旧动画的取消收尾不得清除后来启动的新动画。
                 if (_transitionVersion == version) _isTransitioning = false;
             }
+        }
+
+        private void ApplyTransitionProgress(float progress)
+        {
+            _transitionProgress = Mathf.Clamp01(progress);
+            _transitionEasedProgress = _transitionGlobalEase == Ease.NotSet
+                ? _transitionProgress
+                : UIEasing.Evaluate(_transitionGlobalEase, _transitionProgress);
+            // 保留归一化进度及虚方法通知；实际姿态使用独立的曲线进度。
+            EffectAmount = Mathf.LerpUnclamped(
+                _transitionFromAmount, _isShowing ? 0f : 1f, _transitionEasedProgress);
         }
 
         private void EndTransition()
@@ -225,20 +242,16 @@ namespace JH
 
             if (_isTransitioning)
             {
-                var targetAmount = _isShowing ? 0f : 1f;
-                var amountRange = targetAmount - _transitionFromAmount;
-                var progress = Mathf.Approximately(amountRange, 0f)
-                    ? 1f
-                    : (value - _transitionFromAmount) / amountRange;
-                // 全局曲线已由基类应用到进度，仅在 NotSet 时再使用对应方向的分项曲线。
-                var useParts = (_isShowing ? showEase : hideEase) == Ease.NotSet;
-                var animated = EffectSerializedRectTransform.Lerp(
-                    _transitionFrom, _isShowing ? showTarget : hideTarget, progress,
-                    useParts ? (_isShowing ? showAnchorPosEase : hideAnchorPosEase) : Ease.Linear,
-                    useParts ? (_isShowing ? showAngleEase : hideAngleEase) : Ease.Linear,
-                    useParts ? (_isShowing ? showScaleEase : hideScaleEase) : Ease.Linear,
-                    useParts ? (_isShowing ? showSizeDeltaEase : hideSizeDeltaEase) : Ease.Linear,
-                    useParts ? (_isShowing ? showPivotEase : hidePivotEase) : Ease.Linear);
+                var target = _isShowing ? showTarget : hideTarget;
+                var animated = _transitionGlobalEase == Ease.NotSet
+                    ? EffectSerializedRectTransform.Lerp(
+                        _transitionFrom, target, _transitionProgress,
+                        _isShowing ? showAnchorPosEase : hideAnchorPosEase,
+                        _isShowing ? showAngleEase : hideAngleEase,
+                        _isShowing ? showScaleEase : hideScaleEase,
+                        _isShowing ? showSizeDeltaEase : hideSizeDeltaEase,
+                        _isShowing ? showPivotEase : hidePivotEase)
+                    : EffectSerializedRectTransform.LerpUnclamped(_transitionFrom, target, _transitionEasedProgress);
                 animated.Apply(transform as RectTransform);
                 return;
             }

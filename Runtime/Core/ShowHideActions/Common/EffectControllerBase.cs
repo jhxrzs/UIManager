@@ -32,6 +32,9 @@ namespace JH
         [SerializeField, Tooltip("UI从显示到隐藏的用时")]
         private float hideDuration = 1f;
 
+        protected float ShowDuration => showDuration;
+        protected float HideDuration => hideDuration;
+
         /// <summary>
         ///  UI从隐藏到显示的曲线
         /// </summary>

@@ -27,6 +27,7 @@ namespace JH.Test_UIManager
         {
             var go = new GameObject("RectEffect", typeof(RectTransform));
             _createdObjects.Add(go);
+            go.transform.SetParent(CreateObject("RectEffectContainer").transform, false);
             go.SetActive(false);
             ui = go.AddComponent<UIBase>();
             ui.enabled = false;
@@ -62,6 +63,10 @@ namespace JH.Test_UIManager
         private static void SampleRectAmount(RectEffectController effect, float amount) =>
             typeof(EffectControllerBase).GetProperty("EffectAmount", BindingFlags.Instance | BindingFlags.NonPublic)
                 .SetValue(effect, amount);
+
+        private static void SampleRectProgress(RectEffectController effect, float progress) =>
+            typeof(RectEffectController).GetMethod("ApplyTransitionProgress", BindingFlags.Instance | BindingFlags.NonPublic)
+                .Invoke(effect, new object[] { progress });
 
         private static float ReadRectAmount(RectEffectController effect) =>
             (float)typeof(EffectControllerBase).GetProperty("EffectAmount",
@@ -104,7 +109,7 @@ namespace JH.Test_UIManager
             {
                 Assert.IsFalse(operation.IsCompleted);
                 // 采样真实运行中的控制器，直接设置精确进度，避免按帧计时导致半程断言波动。
-                SampleRectAmount(effect, 0.5f);
+                SampleRectProgress(effect, 0.5f);
                 var expected = new EffectSerializedRectTransform
                 {
                     anchorPos = showing ? new Vector2(75, 150) : new Vector2(25, 50),
@@ -138,8 +143,8 @@ namespace JH.Test_UIManager
             var operation = CaptureException(showing ? ui.ShowAsync(cancellation.Token) : ui.HideAsync(cancellation.Token));
             try
             {
-                // 全局 InQuad 在半程已将进度映射为 0.25，分项不能再次求曲线。
-                SampleRectAmount(effect, showing ? 0.75f : 0.25f);
+                // 从线性半程进入真实运行路径，全局 InQuad 映射为 0.25，分项不能再次求曲线。
+                SampleRectProgress(effect, 0.5f);
                 Assert.That(((RectTransform)effect.transform).anchoredPosition.x,
                     Is.EqualTo(showing ? 75f : 25f).Within(0.001f));
             }
@@ -156,7 +161,7 @@ namespace JH.Test_UIManager
             SetRectEffectField(effect, "showAnchorPosEase", Ease.OutQuad);
             ui.Show();
             var hiding = CaptureException(ui.HideAsync(CancellationToken.None));
-            SampleRectAmount(effect, 0.5f);
+            SampleRectProgress(effect, 0.5f);
             Assert.That(((RectTransform)effect.transform).anchoredPosition.x, Is.EqualTo(25f).Within(0.001f));
             using var cancellation = new CancellationTokenSource();
             var showing = CaptureException(ui.ShowAsync(cancellation.Token));
@@ -167,7 +172,7 @@ namespace JH.Test_UIManager
                 yield return WaitForTask(hiding);
                 Assert.That(hiding.Result, Is.InstanceOf<OperationCanceledException>());
                 // 旧动画 finally 已运行，新动画的半程仍应从 25 按 OutQuad 前进到 0，即 6.25。
-                SampleRectAmount(effect, 0.25f);
+                SampleRectProgress(effect, 0.5f);
                 Assert.That(((RectTransform)effect.transform).anchoredPosition.x, Is.EqualTo(6.25f).Within(0.001f));
             }
             finally { cancellation.Cancel(); }
@@ -182,7 +187,7 @@ namespace JH.Test_UIManager
             ConfigureRectParts(effect, false);
             ui.Show();
             var hiding = CaptureException(ui.HideAsync(CancellationToken.None));
-            SampleRectAmount(effect, 0.5f);
+            SampleRectProgress(effect, 0.5f);
 
             ui.Show();
 
@@ -192,6 +197,165 @@ namespace JH.Test_UIManager
             AssertRectPose((RectTransform)effect.transform, RectShownPose);
             ui.Hide();
             AssertRectPose((RectTransform)effect.transform, RectHiddenPose);
+        }
+
+        private static void ConfigureRectUniformEase(RectEffectController effect, bool showing, Ease ease, bool global)
+        {
+            var prefix = showing ? "show" : "hide";
+            SetRectEffectField(effect, prefix + "Ease", global ? ease : Ease.NotSet);
+            foreach (var part in new[] { "AnchorPos", "Angle", "Scale", "SizeDelta", "Pivot" })
+                SetRectEffectField(effect, prefix + part + "Ease", global ? Ease.Linear : ease);
+        }
+
+        private static EffectSerializedRectTransform ExpectedRectPose(
+            EffectSerializedRectTransform from, EffectSerializedRectTransform to, float progress) => new()
+        {
+            anchorPos = from.anchorPos + (to.anchorPos - from.anchorPos) * progress,
+            angle = from.angle + (to.angle - from.angle) * progress,
+            scale = from.scale + (to.scale - from.scale) * progress,
+            sizeDelta = from.sizeDelta + (to.sizeDelta - from.sizeDelta) * progress,
+            pivot = from.pivot + (to.pivot - from.pivot) * progress
+        };
+
+        [UnityTest]
+        public IEnumerator RectEffect_HideBackAndElastic_ShouldPreserveOvershootForAllProperties() =>
+            VerifyRectOvershoot(false);
+
+        [UnityTest]
+        public IEnumerator RectEffect_ShowBackAndElastic_ShouldPreserveOvershootForAllProperties() =>
+            VerifyRectOvershoot(true);
+
+        private IEnumerator VerifyRectOvershoot(bool showing)
+        {
+            var curves = new[] { Ease.InBack, Ease.OutBack, Ease.InElastic, Ease.OutElastic };
+            // 已知曲线半程值独立于生产求值器，既检出截断，也检出重复应用曲线。
+            var halfProgress = new[] { -0.0876975f, 1.0876975f, -0.015625f, 1.015625f };
+            for (var i = 0; i < curves.Length; i++)
+            {
+                var global = CreateRectEffect(out var globalUI);
+                var parts = CreateRectEffect(out var partsUI);
+                ConfigureRectUniformEase(global, showing, curves[i], true);
+                ConfigureRectUniformEase(parts, showing, curves[i], false);
+                if (showing) { globalUI.Hide(); partsUI.Hide(); }
+                else { globalUI.Show(); partsUI.Show(); }
+
+                using var globalCancellation = new CancellationTokenSource();
+                using var partsCancellation = new CancellationTokenSource();
+                var globalOperation = CaptureException(showing
+                    ? globalUI.ShowAsync(globalCancellation.Token) : globalUI.HideAsync(globalCancellation.Token));
+                var partsOperation = CaptureException(showing
+                    ? partsUI.ShowAsync(partsCancellation.Token) : partsUI.HideAsync(partsCancellation.Token));
+                try
+                {
+                    Assert.IsFalse(globalOperation.IsCompleted);
+                    Assert.IsFalse(partsOperation.IsCompleted);
+                    SampleRectProgress(global, 0.5f);
+                    SampleRectProgress(parts, 0.5f);
+                    var expected = ExpectedRectPose(showing ? RectHiddenPose : RectShownPose,
+                        showing ? RectShownPose : RectHiddenPose, halfProgress[i]);
+                    AssertRectPose((RectTransform)global.transform, expected);
+                    AssertRectPose((RectTransform)parts.transform, expected);
+                    AssertRectPose((RectTransform)global.transform,
+                        EffectSerializedRectTransform.GetInstance((RectTransform)parts.transform));
+                    Assert.That(ReadRectAmount(global), Is.InRange(0f, 1f), "表现允许过冲，标准进度仍保持有效范围。");
+                    Assert.That(ReadRectAmount(parts), Is.InRange(0f, 1f));
+                }
+                finally
+                {
+                    globalCancellation.Cancel();
+                    partsCancellation.Cancel();
+                }
+                yield return WaitForTask(globalOperation);
+                yield return WaitForTask(partsOperation);
+                Assert.That(globalOperation.Result, Is.InstanceOf<OperationCanceledException>());
+                Assert.That(partsOperation.Result, Is.InstanceOf<OperationCanceledException>());
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator RectEffect_ReversingDuringOvershoot_ShouldPreservePoseAndNewTransition()
+        {
+            var effect = CreateRectEffect(out var ui);
+            ConfigureRectUniformEase(effect, false, Ease.OutBack, true);
+            ConfigureRectUniformEase(effect, true, Ease.OutElastic, true);
+            ui.Show();
+            using var hideCancellation = new CancellationTokenSource();
+            using var showCancellation = new CancellationTokenSource();
+            var hiding = CaptureException(ui.HideAsync(hideCancellation.Token));
+            System.Threading.Tasks.Task<Exception> showing = null;
+            try
+            {
+                SampleRectProgress(effect, 0.5f);
+                var rect = (RectTransform)effect.transform;
+                AssertRectPose(rect, ExpectedRectPose(RectShownPose, RectHiddenPose, 1.0876975f));
+                var overshoot = EffectSerializedRectTransform.GetInstance(rect);
+                showing = CaptureException(ui.ShowAsync(showCancellation.Token));
+                AssertRectPose(rect, overshoot);
+                yield return WaitForTask(hiding);
+                Assert.That(hiding.Result, Is.InstanceOf<OperationCanceledException>());
+
+                // 旧动画取消收尾之后，新动画仍从捕获的越界姿态独立求值。
+                SampleRectProgress(effect, 0.5f);
+                AssertRectPose(rect, ExpectedRectPose(overshoot, RectShownPose, 1.015625f));
+                Assert.IsFalse(showing.IsCompleted);
+            }
+            finally
+            {
+                hideCancellation.Cancel();
+                showCancellation.Cancel();
+            }
+            yield return WaitForTask(showing);
+            Assert.That(showing.Result, Is.InstanceOf<OperationCanceledException>());
+        }
+
+        [UnityTest]
+        public IEnumerator RectEffect_CanceledOvershootRetry_ShouldRunFullDurationFromActualPose()
+        {
+            foreach (var global in new[] { true, false })
+            {
+                var effect = CreateRectEffect(out var ui);
+                ConfigureRectUniformEase(effect, false, Ease.OutBack, global);
+                ui.Show();
+                using var cancellation = new CancellationTokenSource();
+                var hiding = CaptureException(ui.HideAsync(cancellation.Token));
+                EffectSerializedRectTransform overshoot;
+                try
+                {
+                    SampleRectProgress(effect, 0.5f);
+                    overshoot = EffectSerializedRectTransform.GetInstance((RectTransform)effect.transform);
+                    AssertRectPose((RectTransform)effect.transform,
+                        ExpectedRectPose(RectShownPose, RectHiddenPose, 1.0876975f));
+                    if (global) Assert.That(ReadRectAmount(effect), Is.EqualTo(1f));
+                }
+                finally { cancellation.Cancel(); }
+                yield return WaitForTask(hiding);
+                Assert.That(hiding.Result, Is.InstanceOf<OperationCanceledException>());
+                AssertRectPose((RectTransform)effect.transform, overshoot);
+
+                const float retryDuration = 0.2f;
+                SetRectEffectField(effect, "hideDuration", retryDuration);
+                using var retryCancellation = new CancellationTokenSource();
+                var startedAt = Time.unscaledTimeAsDouble;
+                var retry = CaptureException(ui.HideAsync(retryCancellation.Token));
+                try
+                {
+                    Assert.IsFalse(retry.IsCompleted);
+                    AssertRectPose((RectTransform)effect.transform, overshoot);
+                    // 即使全局标准进度已等于隐藏终点，实际姿态仍需要完整的下一段过渡。
+                    SampleRectProgress(effect, 0.5f);
+                    AssertRectPose((RectTransform)effect.transform,
+                        ExpectedRectPose(overshoot, RectHiddenPose, 1.0876975f));
+                    Assert.IsFalse(retry.IsCompleted);
+                    yield return WaitForTask(retry);
+                    Assert.IsNull(retry.Result);
+                    Assert.That(Time.unscaledTimeAsDouble - startedAt,
+                        Is.GreaterThanOrEqualTo(retryDuration - 0.00001), "重试必须按完整配置时长播放。");
+                    AssertRectPose((RectTransform)effect.transform, RectHiddenPose);
+                    Assert.That(ReadRectAmount(effect), Is.EqualTo(1f));
+                    Assert.AreEqual(UIState.Hided, ui.State);
+                }
+                finally { retryCancellation.Cancel(); }
+            }
         }
 
         [Test]

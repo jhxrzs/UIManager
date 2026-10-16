@@ -64,5 +64,19 @@ namespace JH
                 pivot = Vector2.LerpUnclamped(from.pivot, to.pivot, UIEasing.Evaluate(pivotEase, t))
             };
         }
+
+        /// <summary>使用已经求值的全局曲线进度，保留曲线过冲，不再次求曲线或钳制。</summary>
+        internal static EffectSerializedRectTransform LerpUnclamped(
+            EffectSerializedRectTransform from, EffectSerializedRectTransform to, float progress)
+        {
+            return new EffectSerializedRectTransform
+            {
+                anchorPos = Vector2.LerpUnclamped(from.anchorPos, to.anchorPos, progress),
+                angle = Vector3.LerpUnclamped(from.angle, to.angle, progress),
+                scale = Vector3.LerpUnclamped(from.scale, to.scale, progress),
+                sizeDelta = Vector2.LerpUnclamped(from.sizeDelta, to.sizeDelta, progress),
+                pivot = Vector2.LerpUnclamped(from.pivot, to.pivot, progress)
+            };
+        }
     }
 }
