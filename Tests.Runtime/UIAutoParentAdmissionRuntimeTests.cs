@@ -53,11 +53,11 @@ namespace JH.Test_UIManager
         }
 
         [UnityTest]
-        public IEnumerator AutoParent_AsyncRejectedParent_ShouldCancelChildWithoutSuccess() =>
+        public IEnumerator AutoParent_AsyncRejectedParent_ShouldRejectBeforeStarting() =>
             VerifyAsyncAutoParentRejection(false);
 
         [UnityTest]
-        public IEnumerator AutoParent_AsyncRejectedGrandparent_ShouldNotStartLowerParents() =>
+        public IEnumerator AutoParent_AsyncRejectedGrandparent_ShouldRejectBeforeStarting() =>
             VerifyAsyncAutoParentRejection(true);
 
         private IEnumerator VerifyAsyncAutoParentRejection(bool blockAncestor)
@@ -70,7 +70,7 @@ namespace JH.Test_UIManager
             var operation = CaptureException(child.ShowAsync(CancellationToken.None));
             yield return WaitForTask(operation);
 
-            Assert.That(operation.Result, Is.InstanceOf<OperationCanceledException>());
+            Assert.IsNull(operation.Result, "预演拒绝按普通准入拒绝正常返回。");
             Assert.AreEqual(UIState.Hided, blocked.State);
             Assert.AreEqual(UIState.Hided, parent.State);
             Assert.AreEqual(UIState.Showed, holder.State);
@@ -234,8 +234,8 @@ namespace JH.Test_UIManager
             child.Show();
 
             Assert.That(log.Messages.Exists(message => message.Contains("AutoChild") &&
-                message.Contains("自动父链未就绪") && message.Contains("BlockedParent") &&
-                message.Contains("显示操作失去准入")), Is.True);
+                message.Contains("显示预演失败") && message.Contains("BlockedParent") &&
+                message.Contains("显示请求被拒绝")), Is.True);
         }
 
         [Test]

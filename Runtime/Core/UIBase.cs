@@ -307,7 +307,7 @@ namespace JH
             if (_isUIStateInitialized && State is UIState.Showed) return;
 
             // 父链未就绪或更高优先级同组兄弟活跃时，本次请求保持零副作用拒绝。
-            if (!CanScheduleShow(UIShowMode.Normal)) return;
+            if (!CanPreflightShow()) return;
 
             UIOperationDispatcher.BeginBehavior(this, true);
 
@@ -373,18 +373,18 @@ namespace JH
             return UIOperationDispatcher.RunAsync(this, true, () => ExecuteShowAsync(cancellationToken), cancellationToken);
         }
 
-        private async UniTask ExecuteShowAsync(CancellationToken cancellationToken)
+        private async UniTask ExecuteShowAsync(CancellationToken cancellationToken, bool allowScheduledParents = false)
         {
             // 预取消必须在任何状态和事件副作用发生前被观察。
             ThrowIfShowHideCancellationRequested(cancellationToken);
             if (_isUIStateInitialized && State is UIState.Showed) return;
 
             // 正常仲裁拒绝不属于异常，且不得取消当前操作或改变任何UI状态。
-            if (!CanScheduleShow(UIShowMode.Normal)) return;
+            if (!CanPreflightShow(allowScheduledParents)) return;
 
             // 取消异常属于公开契约的一部分，不在此处吞掉。
             UIOperationDispatcher.BeginBehavior(this, true);
-            await UIOperationDispatcher.Continue(ShowNotCheckStateAsync(cancellationToken, UIShowMode.Normal));
+            await UIOperationDispatcher.Continue(ShowNotCheckStateAsync(cancellationToken, UIShowMode.Normal, allowScheduledParents: allowScheduledParents));
         }
 
         /// <summary>
@@ -753,7 +753,7 @@ namespace JH
         /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；普通显示传-1。</param>
         /// <returns>本轮显示流程任务。</returns>
         private async UniTask ShowNotCheckStateAsync(CancellationToken cancellationToken, UIShowMode showMode,
-            UIBase parentCascadeSource = null, int parentCascadeSourceOperationVersion = -1)
+            UIBase parentCascadeSource = null, int parentCascadeSourceOperationVersion = -1, bool allowScheduledParents = false)
         {
             // 进入本轮操作前观察预取消和对象销毁。
             ThrowIfShowHideCancellationRequested(cancellationToken);
@@ -766,59 +766,50 @@ namespace JH
                 parentCascadeSource,
                 parentCascadeSourceOperationVersion);
 
+            if (allowScheduledParents) _allowScheduledParentsVersion = operationVersion;
             var siblings = ListPool<UIBase>.Get();
             var parents = ListPool<UIBase>.Get();
             var children = ListPool<UIBase>.Get();
+            var tasks = ListPool<UniTask>.Get();
             try
             {
-                var operationToken = operationCts.Token;
+                Exception schedulingException = null;
+                try
+                {
+                    MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
+                    _isUIStateInitialized = true;
 
-                // 取消回调可能改变父链或兄弟关系，已登记操作失去准入时必须收口旧过渡状态。
+                    // 这些方法先同步完成所有关系调度，返回的任务只等待已启动的表现。
+                    tasks.Add(BeforeUIShowAsyncInvoke(siblings, parents, operationVersion, operationCts, showMode));
+                    operationCts.Token.ThrowIfCancellationRequested();
+                    tasks.Add(OnUIShowAsync(operationCts.Token));
+                    tasks.Add(ReconcileCurrentShowSiblingsAsync(siblings, showMode, operationVersion, operationCts));
+                    tasks.Add(ShowChildrenWithParentAsyncInvoke(children, operationVersion, operationCts));
+                    tasks.Add(ReconcileCurrentShowSiblingsAsync(siblings, showMode, operationVersion, operationCts));
+                    MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
+                    _showRelationsVersion = operationVersion;
+                    BringToFront(siblings);
+                }
+                catch (Exception exception)
+                {
+                    // 覆写钩子即使在返回任务前抛错，已启动的其他表现也必须被观察。
+                    schedulingException = exception;
+                }
+
+                Exception presentationException = null;
+                try
+                {
+                    await UIOperationDispatcher.Continue(UIAsync.WaitAll(tasks));
+                }
+                catch (Exception exception)
+                {
+                    presentationException = exception;
+                }
+                ThrowHandlerExceptions(schedulingException, presentationException);
+
+                // 异步恢复只复核并提交完成状态，不再打开父链、隐藏兄弟或发现默认子节点。
                 MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
-
-                // 通过二次准入后才接管序列化初态，被拒绝的预约不影响Start。
-                _isUIStateInitialized = true;
-
-                // 相邻UI联动与当前UI动画并行执行。
-                var beforeTask = BeforeUIShowAsyncInvoke(
-                    siblings,
-                    parents,
-                    operationVersion,
-                    operationCts,
-                    showMode);
-                operationToken.ThrowIfCancellationRequested();
-                var showTask = OnUIShowAsync(operationToken);
-                await UIOperationDispatcher.Continue(UIAsync.WaitAll(beforeTask, showTask));
-
-                // 异步显示行为等待期间层级可能变化，处理子树前使用最新兄弟关系收口。
-                await UIOperationDispatcher.Continue(ReconcileCurrentShowSiblingsAsync(
-                    siblings,
-                    showMode,
-                    operationVersion,
-                    operationCts));
-
-                // 当前面板和上游关系完成后，顺序等待全部随父显示的直接子UI。
-                ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
-                await UIOperationDispatcher.Continue(ShowChildrenWithParentAsyncInvoke(children, operationVersion, operationCts));
-
-                // 子UI级联完成后再次协调最新兄弟，避免动态换父绕过最初快照。
-                await UIOperationDispatcher.Continue(ReconcileCurrentShowSiblingsAsync(
-                    siblings,
-                    showMode,
-                    operationVersion,
-                    operationCts));
-
-                // 即使处理器忽略取消，也只有最新操作可以提交状态。
-                AfterUIShowedInvoke(siblings, operationVersion, showMode, operationCts);
-
-                // StateChanged、层级调整和After回调都可能改变关系，成功返回前再次异步协调。
-                await UIOperationDispatcher.Continue(ReconcileCurrentShowSiblingsAsync(
-                    siblings,
-                    showMode,
-                    operationVersion,
-                    operationCts));
-
-                // 最终协调期间也可能触发外部取消，成功完成前必须再观察一次。
+                AfterUIShowedInvoke(siblings, operationVersion, showMode, operationCts, updateSiblingIndex: false);
                 ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
             }
             catch (Exception operationException)
@@ -857,6 +848,7 @@ namespace JH
                             }
                             finally
                             {
+                                ListPool<UniTask>.Release(tasks);
                                 CompleteAsynchronousShowHideAction(operationCts);
                             }
                         }
@@ -1027,41 +1019,46 @@ namespace JH
         private async UniTask BeforeUIShowAsyncInvoke(List<UIBase> siblings, List<UIBase> parents,
             int operationVersion, CancellationTokenSource operationCts, UIShowMode showMode)
         {
-            // 当前局部令牌贯穿兄弟、父链和本轮UI自身的全部异步关系任务。
-            var cancellationToken = operationCts.Token;
-
-            // 状态和事件回调可能触发新显隐，因此每一步后检查取消。
-            State = UIState.Showing;
-            MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
-            UINotification.Invoke(this, nameof(BeforeUIShowEvent), BeforeUIShowEvent);
-            MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
-
-            // 事件回调可能改变层级，先异步协调当前全部同组兄弟。
-            await UIOperationDispatcher.Continue(ReconcileCurrentShowSiblingsAsync(
-                siblings,
-                showMode,
-                operationVersion,
-                operationCts));
-
-            // 兄弟隐藏结束后才捕获最新父链，避免继续使用回调前的旧关系。
-            if (ShouldAutoShowParentChain(showMode)) FindParents(parents);
-
-            // 只有自动父链策略顺序等待祖先，严格父链与父级联均不主动显示父UI。
-            if (ShouldAutoShowParentChain(showMode))
+            var tasks = ListPool<UniTask>.Get();
+            try
             {
-                for (var i = 0; i < parents.Count; i++)
+                Exception schedulingException = null;
+                try
                 {
-                    var eachParent = parents[i];
-                    if (!IsCurrentParent(eachParent)) continue;
-                    await UIOperationDispatcher.Continue(eachParent.ExecuteShowAsync(cancellationToken));
-                    MaintainAutoParentResult(eachParent, operationVersion, operationCts);
+                    State = UIState.Showing;
+                    MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
+                    UINotification.Invoke(this, nameof(BeforeUIShowEvent), BeforeUIShowEvent);
+                    MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
+                    tasks.Add(ReconcileCurrentShowSiblingsAsync(siblings, showMode, operationVersion, operationCts));
+                    if (ShouldAutoShowParentChain(showMode))
+                    {
+                        FindParents(parents);
+                        for (var i = 0; i < parents.Count; i++)
+                        {
+                            var parent = parents[i];
+                            if (!IsCurrentParent(parent)) continue;
+                            if (!parent.IsShowRelationReady(true))
+                                tasks.Add(parent.ExecuteShowAsync(operationCts.Token, allowScheduledParents: true));
+                            MaintainAutoParentResult(parent, operationVersion, operationCts);
+                            MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
+                        }
+                        _readyAutoParentChainVersion = operationVersion;
+                    }
                     MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
                 }
-                _readyAutoParentChainVersion = operationVersion;
+                catch (Exception exception)
+                {
+                    schedulingException = exception;
+                }
+                Exception presentationException = null;
+                try { await UIOperationDispatcher.Continue(UIAsync.WaitAll(tasks)); }
+                catch (Exception exception) { presentationException = exception; }
+                ThrowHandlerExceptions(schedulingException, presentationException);
             }
-
-            // 关系任务全部完成后再次阻止父链变化或高优先级重入让旧请求提交显示。
-            MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
+            finally
+            {
+                ListPool<UniTask>.Release(tasks);
+            }
         }
 
         /// <summary>
@@ -1116,10 +1113,16 @@ namespace JH
         private async UniTask ShowChildrenWithParentAsyncInvoke(List<UIBase> children, int operationVersion,
             CancellationTokenSource operationCts)
         {
-            // 当前显示行为结束后再捕获直接子UI，允许异步行为在本轮中调整层级。
+            var tasks = ListPool<UniTask>.Get();
+            try
+            {
+                Exception schedulingException = null;
+                try
+                {
+            // 同步调度阶段捕获直接子UI；动画结束后不再发现新节点。
             FindChildrenForParentShow(children);
 
-            // 按Hierarchy顺序等待每个子UI，避免同组子UI并发显隐时互相取消。
+            // 按Hierarchy顺序启动关系调度，不等待上一个子UI动画。
             for (var i = 0; i < children.Count; i++)
             {
                 // 每次访问快照节点前都确认父UI仍由本轮操作控制。
@@ -1139,14 +1142,22 @@ namespace JH
                 if (HasShowingUIInSiblingGroup(children, eachChild)) continue;
 
                 // 父级联批次先选中严格更高优先级候选，不启动注定会被抢占的低优先级异步行为。
-                if (HasHigherPriorityShowWithParentCandidate(children, eachChild)) continue;
+                if (HasHigherPriorityShowWithParentCandidate(children, eachChild, chooseLastEqual: true)) continue;
 
                 // 子UI继承父UI令牌并执行完整异步生命周期，但不再向上等待父链。
-                await UIOperationDispatcher.Continue(eachChild.ShowFromParentAsync(operationCts.Token, this, operationVersion));
+                tasks.Add(eachChild.ShowFromParentAsync(operationCts.Token, this, operationVersion));
 
                 // 子UI回调可能取代当前父UI操作，继续处理下一个节点前必须再次校验。
                 ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
             }
+                }
+                catch (Exception exception) { schedulingException = exception; }
+                Exception presentationException = null;
+                try { await UIOperationDispatcher.Continue(UIAsync.WaitAll(tasks)); }
+                catch (Exception exception) { presentationException = exception; }
+                ThrowHandlerExceptions(schedulingException, presentationException);
+            }
+            finally { ListPool<UniTask>.Release(tasks); }
         }
 
         /// <summary>
@@ -1180,7 +1191,8 @@ namespace JH
         /// <param name="children">当前父UI本轮捕获的直接子UI快照。</param>
         /// <param name="targetChild">准备由父UI自动显示的目标子UI。</param>
         /// <returns>存在严格更高优先级候选时返回true。</returns>
-        private bool HasHigherPriorityShowWithParentCandidate(List<UIBase> children, UIBase targetChild)
+        private bool HasHigherPriorityShowWithParentCandidate(List<UIBase> children, UIBase targetChild,
+            bool chooseLastEqual = false)
         {
             // 候选预选只比较同一份直接子UI快照，不扩大到其他层级。
             for (var i = 0; i < children.Count; i++)
@@ -1194,7 +1206,9 @@ namespace JH
 
                 // 只在同互斥组内使用数值优先级，相等时保留原Hierarchy后请求获胜语义。
                 if (eachCandidate.mutexGroup == targetChild.mutexGroup &&
-                    eachCandidate.mutexPriority > targetChild.mutexPriority) return true;
+                    (eachCandidate.mutexPriority > targetChild.mutexPriority ||
+                     chooseLastEqual && eachCandidate.mutexPriority == targetChild.mutexPriority &&
+                     i > children.IndexOf(targetChild))) return true;
             }
 
             // 本批次没有严格更高优先级候选时允许目标继续原流程。
@@ -1253,13 +1267,22 @@ namespace JH
         /// <param name="showMode">当前显示请求的来源模式。</param>
         /// <param name="operationCts">异步流程的本轮取消源；同步流程传null。</param>
         private void AfterUIShowedInvoke(List<UIBase> siblings, int operationVersion, UIShowMode showMode,
-            CancellationTokenSource operationCts = null)
+            CancellationTokenSource operationCts = null, bool updateSiblingIndex = true)
         {
             // 提交Showed前最后复核父链和兄弟优先级，失去准入时由隐藏流程收口。
             if (!MaintainCurrentShowAdmission(showMode, operationVersion, operationCts)) return;
             State = UIState.Showed;
             if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return;
 
+            if (updateSiblingIndex) BringToFront(siblings);
+
+            // 层级变化回调也可能重入显隐。
+            if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return;
+            UINotification.Invoke(this, nameof(AfterUIShowedEvent), AfterUIShowedEvent);
+        }
+
+        private void BringToFront(List<UIBase> siblings)
+        {
             // 固定层级的UI不参与自动置顶。
             if (!fixedSiblingIndex)
             {
@@ -1277,9 +1300,6 @@ namespace JH
                 if (hasFlexibleSibling) transform.SetSiblingIndex(maxSiblingIndex);
             }
 
-            // 层级变化回调也可能重入显隐。
-            if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return;
-            UINotification.Invoke(this, nameof(AfterUIShowedEvent), AfterUIShowedEvent);
         }
 
         /// <summary>
@@ -1622,7 +1642,7 @@ namespace JH
             if (State == UIState.Showed)
             {
                 // 严格父链未就绪或更高优先级已占权时，将不可见假状态规范化为Hided。
-                if (!CanScheduleShow(UIShowMode.Normal)) HideNotCheckState();
+                if (!CanPreflightShow()) HideNotCheckState();
                 else ShowNotCheckState(UIShowMode.Normal);
             }
             else if (State == UIState.Hided) HideNotCheckState();
@@ -1635,7 +1655,7 @@ namespace JH
             else if (State == UIState.Hiding)
             {
                 // 不具备显示准入时直接完成隐藏，避免启动一次必然被拒绝的显示。
-                if (!CanScheduleShow(UIShowMode.Normal)) HideNotCheckState();
+                if (!CanPreflightShow()) HideNotCheckState();
                 else
                 {
                     // 兼容原有Hiding初态，先恢复显示效果再异步完成隐藏。

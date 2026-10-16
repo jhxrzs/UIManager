@@ -9,6 +9,7 @@ namespace JH
             MissingRequiredParent,
             RequiredParentNotReady,
             AutoParentNotReady,
+            PreflightAncestorRejected,
             HigherPrioritySibling,
             CascadeSourceUnavailable,
             CascadeParentChanged,
@@ -40,6 +41,8 @@ namespace JH
                     $"层级激活={relatedPanel.gameObject.activeInHierarchy}）。",
                 ShowRejectionReason.CascadeSourceUnavailable =>
                     "父级联来源不存在或已销毁。",
+                ShowRejectionReason.PreflightAncestorRejected =>
+                    $"显示预演失败：必要祖先「{GetSchedulingPath(relatedPanel.transform)}」无法显示，本次请求未执行。",
                 ShowRejectionReason.CascadeParentChanged =>
                     $"父级联关系已失效：来源父面板为「{GetSchedulingPath(relatedPanel.transform)}」，" +
                     $"当前直接父节点为「{GetSchedulingPath(transform.parent)}」。",
