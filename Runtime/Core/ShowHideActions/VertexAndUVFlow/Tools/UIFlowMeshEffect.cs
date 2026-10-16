@@ -837,6 +837,9 @@ namespace JH
             // Sliced、Tiled和Filled Image拥有额外语义，不能替换成普通矩形网格。
             if (image.type != Image.Type.Simple) return false;
 
+            // Sprite自带的四顶点也可能是菱形等非矩形，显式Sprite Mesh必须保留原拓扑。
+            if (image.useSpriteMesh) return false;
+
             // 只有标准四角源网格可以通过双线性插值得到无缝Sprite UV。
             return sourceVertices.Count == 4;
         }
