@@ -142,6 +142,64 @@ namespace JH.Test_UIManager
             }
         }
 
+        [UnityTest]
+        public IEnumerator MemberReparentedInsideGraphicDirtyCallback_ShouldKeepNewGroupState()
+        {
+            var source = CreateGroup("ReentrantSource");
+            var sourceContent = CreateRect("SourceContent", source.transform);
+            var destination = CreateGroup("ReentrantDestination");
+            var destinationContent = CreateRect("DestinationContent", destination.transform);
+            var first = CreateImage(sourceContent);
+            var firstEffect = first.gameObject.AddComponent<UIFlowMeshEffect>();
+            var later = CreateImage(sourceContent);
+            var laterEffect = later.gameObject.AddComponent<UIFlowMeshEffect>();
+            later.rectTransform.anchoredPosition = new Vector2(200f, 0f);
+            yield return null;
+
+            // Distance sorting must visit first before later, independently of Unity entity IDs.
+            source.EndScreenPoint = RectTransformUtility.WorldToScreenPoint(null, first.transform.position);
+            var sourceUI = source.GetComponent<UIBase>();
+            var destinationUI = destination.GetComponent<UIBase>();
+            sourceUI.Show();
+            destinationUI.Show();
+            AssertVisible(first);
+            AssertVisible(later);
+
+            var moved = false;
+            var progressBeforeMove = -1f;
+            var progressAfterMove = -1f;
+            UnityEngine.Events.UnityAction moveLaterMember = () =>
+            {
+                // Hide first refreshes materials at progress zero. Move only during its final
+                // progress traversal, after that traversal has captured both sorted members.
+                if (moved || firstEffect.EffectAmount < 1f) return;
+                moved = true;
+                progressBeforeMove = laterEffect.EffectAmount;
+                // Moving beneath Content changes neither controller's direct children.
+                later.transform.SetParent(destinationContent, false);
+                progressAfterMove = laterEffect.EffectAmount;
+            };
+            first.RegisterDirtyVerticesCallback(moveLaterMember);
+            try
+            {
+                sourceUI.Hide();
+                Assert.IsTrue(moved, "The actual Graphic dirty callback must move the later member.");
+                Assert.That(progressBeforeMove, Is.Zero, "The moved member must still await its old-group turn.");
+                Assert.That(progressAfterMove, Is.Zero, "Reparenting must first apply the shown destination state.");
+                Assert.AreSame(destinationContent, later.transform.parent);
+                Assert.AreEqual(UIState.Hided, sourceUI.State);
+                Assert.AreEqual(UIState.Showed, destinationUI.State);
+                Assert.That(laterEffect.EffectAmount, Is.Zero,
+                    "The old group's remaining traversal must not overwrite the new group's shown state.");
+                AssertVisible(later);
+                AssertHidden(first, firstEffect);
+            }
+            finally
+            {
+                first.UnregisterDirtyVerticesCallback(moveLaterMember);
+            }
+        }
+
         private UIFlowGroupController CreateGroup(string name)
         {
             // Separate plain parents keep these panels outside each other's mutual-exclusion scope.

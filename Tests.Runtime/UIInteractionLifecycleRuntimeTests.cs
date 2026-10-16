@@ -1,8 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -86,6 +88,69 @@ namespace JH.Test_UIManager
             // 显式调用真实 Start，使测试不依赖帧调度；销毁仍走 Unity 的真实 OnDestroy。
             typeof(UIBaseWithShowHideInteraction).GetMethod("Start",
                 BindingFlags.Instance | BindingFlags.NonPublic).Invoke(host, null);
+        }
+
+        [UnityTest]
+        public IEnumerator Interaction_HiddenBeforeStart_Button_ShouldStillWakePanel() =>
+            HiddenBeforeStart_ShouldStillWakePanel(false, false);
+
+        [UnityTest]
+        public IEnumerator Interaction_HiddenBeforeStart_AsyncButton_ShouldStillWakePanel() =>
+            HiddenBeforeStart_ShouldStillWakePanel(false, true);
+
+        [UnityTest]
+        public IEnumerator Interaction_HiddenBeforeStart_Toggle_ShouldStillWakePanel() =>
+            HiddenBeforeStart_ShouldStillWakePanel(true, false);
+
+        [UnityTest]
+        public IEnumerator Interaction_HiddenBeforeStart_AsyncToggle_ShouldStillWakePanel() =>
+            HiddenBeforeStart_ShouldStillWakePanel(true, true);
+
+        private IEnumerator HiddenBeforeStart_ShouldStillWakePanel(bool useToggle, bool isAsync)
+        {
+            var button = CreateLifecycleControl(false, isAsync);
+            var toggle = CreateLifecycleControl(true, isAsync);
+            toggle.Toggle.SetIsOnWithoutNotify(false);
+            var go = CreateObject("HiddenBeforeStart", CreateObject("HiddenBeforeStartRoot").transform);
+            go.SetActive(false);
+            var host = go.AddComponent<UIBaseWithShowHideInteraction>();
+            // 模拟场景的序列化配置：所有字段和表现行为都在首次 Awake 之前就绪。
+            var type = typeof(UIBaseWithShowHideInteraction);
+            type.GetField("buttonInteraction", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(host, new List<ButtonEntity> { (ButtonEntity)button.Entity });
+            type.GetField("toggleInteraction", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(host, new List<ToggleEntity> { (ToggleEntity)toggle.Entity });
+            SetUIBasePrivateField(host, "state", UIState.Showed);
+            host.ShowActions += () => go.SetActive(true);
+            host.HideActions += () => go.SetActive(false);
+            var shows = 0;
+            host.AfterUIShowedEvent += () => shows++;
+
+            go.SetActive(true);
+            Assert.IsFalse(host.IsUIStateInitialized, "此时只经过真实 Awake/OnEnable，尚未执行 Start。");
+            // 首次 Start 前的公开请求或父级联都可能隐藏面板；Showed 初态确保 Hide 不会短路。
+            host.Hide();
+            Assert.AreEqual(UIState.Hided, host.State);
+            Assert.IsTrue(host.enabled);
+            Assert.IsFalse(go.activeInHierarchy);
+            yield return null;
+
+            if (useToggle) toggle.Toggle.isOn = true;
+            else button.Trigger();
+
+            Assert.AreEqual(UIState.Showed, host.State, "Start 前失活不能丢失外部唤醒入口。");
+            Assert.IsTrue(go.activeInHierarchy);
+            Assert.AreEqual(1, shows, "每次输入只能执行一次显示。");
+
+            // 唤醒后才让 Unity 自然执行首次 Start，随后验证绑定没有丢失或重复。
+            yield return null;
+            if (useToggle) toggle.Toggle.isOn = false;
+            else button.Trigger();
+            Assert.AreEqual(UIState.Hided, host.State);
+            if (useToggle) toggle.Toggle.isOn = true;
+            else button.Trigger();
+            Assert.AreEqual(UIState.Showed, host.State);
+            Assert.AreEqual(2, shows);
         }
 
         [TestCase(false, false)]

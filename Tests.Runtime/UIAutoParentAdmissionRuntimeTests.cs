@@ -99,6 +99,75 @@ namespace JH.Test_UIManager
             Assert.AreEqual(UIState.Showed, child.State);
         }
 
+        [UnityTest]
+        public IEnumerator AutoParent_SyncStrictIntermediate_ShouldReuseAlreadyScheduledShowingRoot()
+        {
+            var root = CreateUI("PendingRoot", CreateObject("PendingRootContainer").transform);
+            var parent = CreateUI("StrictIntermediate", root.transform);
+            parent.ParentShowPolicy = UIParentShowPolicy.RequireParentChainShowedForDirectShow;
+            var child = CreateUI("SyncAutoChild", parent.transform);
+            var rootPending = new UniTaskCompletionSource();
+            var rootAsyncShows = 0;
+            var rootSyncShows = 0;
+            var rootToken = CancellationToken.None;
+            var order = new List<string>();
+            var childAfter = 0;
+            root.ShowAsyncActions += token =>
+            {
+                rootAsyncShows++;
+                rootToken = token;
+                return rootPending.Task;
+            };
+            root.ShowActions += () => rootSyncShows++;
+            parent.ShowActions += () => order.Add("parent");
+            child.ShowActions += () => order.Add("child");
+            child.AfterUIShowedEvent += () => childAfter++;
+
+            // 真实请求已返回其同步调度阶段，只有根面板自身动画仍由门闩保持未完成。
+            var rootOperation = CaptureException(root.ShowAsync(CancellationToken.None));
+            try
+            {
+                Assert.IsTrue(root.IsUIStateInitialized);
+                Assert.AreEqual(UIState.Showing, root.State);
+                Assert.IsFalse(rootOperation.IsCompleted);
+                Assert.AreEqual(1, rootAsyncShows);
+
+                // 外部直接显示严格面板仍必须要求根面板已经 Showed。
+                parent.Show();
+                Assert.AreEqual(UIState.Hided, parent.State);
+                Assert.IsEmpty(order);
+
+                // 自动补父链可以复用已调度的 Showing 根面板，并同步打开严格中间父和目标。
+                child.Show();
+                Assert.AreEqual(UIState.Showed, parent.State);
+                Assert.AreEqual(UIState.Showed, child.State);
+                CollectionAssert.AreEqual(new[] { "parent", "child" }, order);
+                Assert.AreEqual(1, childAfter);
+                Assert.AreEqual(UIState.Showing, root.State);
+                Assert.IsFalse(rootOperation.IsCompleted, "补父链不能提前完成根面板的动画。");
+                Assert.AreEqual(1, rootAsyncShows, "已完成关系调度的根面板不能重启动画。");
+                Assert.AreEqual(0, rootSyncShows, "同步补链不能用同步显示取代根面板的异步显示。");
+                Assert.IsFalse(rootToken.IsCancellationRequested);
+
+                // 本轮内部准入不能泄漏给后续的外部直接显示请求。
+                parent.Hide();
+                parent.Show();
+                Assert.AreEqual(UIState.Hided, parent.State);
+                Assert.AreEqual(UIState.Hided, child.State);
+                CollectionAssert.AreEqual(new[] { "parent", "child" }, order);
+            }
+            finally
+            {
+                rootPending.TrySetResult();
+            }
+
+            yield return WaitForTask(rootOperation);
+            Assert.IsNull(rootOperation.Result);
+            Assert.AreEqual(UIState.Showed, root.State);
+            Assert.AreEqual(1, rootAsyncShows);
+            Assert.AreEqual(0, rootSyncShows);
+        }
+
         [Test]
         public void AutoParent_SerializedShowedParent_ShouldRunRealInitializationBeforeChild()
         {
