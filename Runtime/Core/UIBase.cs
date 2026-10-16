@@ -11,6 +11,7 @@ namespace JH
     /// <summary>
     ///  UI面板基类，实现UI的同步显隐、异步显隐以及层级关系联动。
     /// </summary>
+    [RequireComponent(typeof(CanvasGroup))]
     public partial class UIBase : MonoBehaviour, IShowUI, IHideUI, IShowUIAsync, IHideUIAsync
     {
         /// <summary>
@@ -244,8 +245,15 @@ namespace JH
                 // 先提交新状态，确保事件订阅者读取State时得到新值。
                 var previousState = state;
                 state = value;
+                ApplyRaycastState(value);
                 UINotification.Invoke(this, nameof(OnStateChanged), OnStateChanged, previousState, value);
             }
+        }
+
+        /// <summary>保存面板显示时的射线配置，并使隐藏初态不再阻挡射线。</summary>
+        protected virtual void Awake()
+        {
+            ApplyRaycastState(State);
         }
 
         /// <summary>

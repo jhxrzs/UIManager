@@ -984,7 +984,6 @@ MonoBehaviour:
   showEase: -1
   hideEase: -1
   effectAmount: 0
-  dontBlockRaycastOnHide: 0
   canvasGroup: {fileID: 324057694}
   showTarget:
     anchorPos: {x: 0, y: 0}
@@ -2212,7 +2211,6 @@ MonoBehaviour:
   showEase: 0
   hideEase: 0
   effectAmount: 1
-  dontBlockRaycastOnHide: 0
   canvasGroup: {fileID: 749166035}
   showTarget:
     anchorPos: {x: 0, y: 0}
@@ -2526,7 +2524,6 @@ MonoBehaviour:
   showEase: 0
   hideEase: 0
   effectAmount: 0
-  dontBlockRaycastOnHide: 1
   canvasGroup: {fileID: 795638952}
   endScreenPoint: {x: 2504.376, y: 2059.34, z: 0}
   uiCamera: {fileID: 0}
@@ -3356,7 +3353,6 @@ MonoBehaviour:
   showEase: 0
   hideEase: 0
   effectAmount: 0
-  dontBlockRaycastOnHide: 1
   canvasGroup: {fileID: 1208825865}
 --- !u!1 &1280658754
 GameObject:
@@ -3497,7 +3493,6 @@ MonoBehaviour:
   showEase: 0
   hideEase: 0
   effectAmount: 0
-  dontBlockRaycastOnHide: 1
   canvasGroup: {fileID: 1280658760}
 --- !u!21 &1342080095
 Material:

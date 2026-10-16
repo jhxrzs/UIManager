@@ -100,6 +100,21 @@ public class PanelExample : MonoBehaviour
 
 通知事件是同步 `Action`，不要使用 `async void` 承载需要框架观察的异步业务：这类回调的异常不按普通同步调用向外传播，不受这层同步派发保护。需要启动异步业务时，由订阅者自行观察任务并处理异常。显隐 Actions 失败仍按操作失败处理，不会提交成功的完成状态。
 
+## 射线遮挡
+
+`UIBase` 统一管理本物体 `CanvasGroup.blocksRaycasts`，初始化时保存 CanvasGroup 原有的射线配置。动效只处理表现，不修改射线开关；框架不会修改 `CanvasGroup.interactable` 或按钮的可交互配置，也不会因此改变按钮的禁用样式。
+
+| 面板状态 | 射线阻挡 |
+| --- | --- |
+| `Showing` | 恢复保存的显示配置 |
+| `Showed` | 保持 |
+| `Hiding` | 保持，直到所有隐藏行为完成 |
+| `Hided` | 关闭，放行射线 |
+
+隐藏初态在初始化后立即放行射线。取消或失败不代表隐藏完成，尚处于 `Hiding` 的面板继续保持原有射线设置。运行时需要调整显示配置时，使用 `panel.BlocksRaycastsWhenVisible`；隐藏期间设置此属性只更新保存值，不会让隐藏面板重新阻挡射线。
+
+射线命中仍需要配置可命中的 Graphic 或遮罩。射线放行不负责禁止键盘、手柄及自定义输入，动画期间是否允许操作由业务控制。
+
 ## 请求调度
 
 显隐接口在 Unity 主线程调用。公开的 `Show()`、`Hide()`、`ShowAsync()`、`HideAsync()` 都提交到同一个内部队列：空闲时立即消费，正在执行时按提交顺序等待。当前同步调度部分返回后继续消费，不依赖 `Update` 轮询，也不主动等待下一帧。
@@ -247,6 +262,7 @@ public class ScaleEffectController : EffectControllerBase
 | `ShowWithParent` | 是否随直接父界面显示 |
 | `ParentShowPolicy` | 直接显示时的父链准入策略 |
 | `MutexPriority` | 同父同组界面的抢占优先级 |
+| `BlocksRaycastsWhenVisible` | 显示时恢复的射线阻挡配置，不修改交互状态 |
 
 ## 示例与测试
 

@@ -48,12 +48,6 @@ namespace JH
         protected float effectAmount;
 
         /// <summary>
-        ///  隐藏时不允许交互
-        /// </summary>
-        [SerializeField, Tooltip("隐藏时不再阻挡射线,无法交互")]
-        protected bool dontBlockRaycastOnHide = true;
-
-        /// <summary>
         ///  CanvasGroup组件,用来控制UI面板的透明度
         /// </summary>
         [SerializeField, HideInInspector] protected CanvasGroup canvasGroup;
@@ -74,9 +68,6 @@ namespace JH
             {
                 effectAmount = Mathf.Clamp01(value);
                 OnEffectAmountChanged(effectAmount);
-
-                // 只要不是完全显示，就不允许点击
-                if (dontBlockRaycastOnHide) CanvasGroup.blocksRaycasts = effectAmount == 0f;
             }
         }
 
