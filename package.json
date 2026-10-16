@@ -17,7 +17,7 @@
   "samples": [
     {
       "displayName": "基础示例",
-      "description": "展示UI管理器基本用法的示例",
+      "description": "展示UI管理器基本用法。尚未初始化 TMP 时，先通过 Window > TextMeshPro > Import TMP Essential Resources 导入基础资源。示例需要启用 Input System（New 或 Both）；已有自定义 TMP 配置的接入方式见 README 的“示例与测试”。",
       "path": "Samples~/BasicExample"
     }
   ],

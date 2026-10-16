@@ -26,7 +26,7 @@ UIManager 是一个基于 UniTask 的 Unity uGUI 界面管理库。通过组件�
 }
 ```
 
-也可以在 Unity Package Manager 中通过 Git URL 依次安装 UniTask 和 UIManager。uGUI、Input System 和 Animation 模块会随包依赖安装。使用键盘交互时，需要在项目设置中启用 Input System。
+也可以在 Unity Package Manager 中通过 Git URL 依次安装 UniTask 和 UIManager。uGUI、Input System 和 Animation 模块会随包依赖安装。使用键盘交互或运行基础示例时，需要在项目设置中启用 Input System；示例的鼠标按钮也使用该输入后端。
 
 在自定义程序集内使用 UIManager 时，添加 `com.jh.uimanager.runtime` 和 `UniTask` 程序集引用。安装到正式项目时，建议在 Git URL 后指定标签或提交 SHA，以固定依赖版本。
 
@@ -280,7 +280,16 @@ public class ScaleEffectController : EffectControllerBase
 
 ## 示例与测试
 
-在 Unity Package Manager 中选择 UIManager，导入“基础示例”，打开其中的 `TestUIManager.unity` 场景即可体验。运行时也可以通过 `UIBase` 组件的上下文菜单触发显隐操作。
+基础示例包含 TextMeshPro 文字。安装 uGUI 包不会自动导入项目级的 TMP Essential Resources；示例使用其中的默认字体、材质、着色器和 TMP Settings。
+
+首次运行示例时：
+
+1. 在 Unity Package Manager 中选择 UIManager，导入“基础示例”。
+2. 尚未初始化 TMP 的工程，执行 `Window > TextMeshPro > Import TMP Essential Resources`，在导入窗口中保留完整资源并点击 **Import**；无需导入 TMP Examples and Extras。工程已导入完整基础资源时可跳过。已有可用的自定义 TMP Settings、字体和材质时，也可跳过导入，按下文为示例文字绑定现有资源。
+3. 在 `Edit > Project Settings > Player > Other Settings > Active Input Handling` 中选择 **Input System Package (New)** 或 **Both**，并按 Unity 提示重启编辑器。
+4. 打开导入目录中的 `TestUIManager.unity` 场景并运行。
+
+若示例中的 `Text (TMP)` 没有显示文字，先检查其 Font Asset 是否为有效的 `LiberationSans SDF`，以及对应材质是否有效。项目使用自定义 TMP 配置时，也可以为该示例文字指定已有字体及其对应材质；无需替换项目已有的 TMP Settings。运行时还可以通过 `UIBase` 组件的上下文菜单触发显隐操作。
 
 包内包含生命周期、动态层级、抢占、取消、异常收尾和进度过渡的 PlayMode 测试。运行测试时，在宿主工程安装 Unity Test Framework，并在 `Packages/manifest.json` 的顶层加入：
 
