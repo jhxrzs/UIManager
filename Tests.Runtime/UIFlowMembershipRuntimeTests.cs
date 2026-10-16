@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -193,6 +194,71 @@ namespace JH.Test_UIManager
                     "The old group's remaining traversal must not overwrite the new group's shown state.");
                 AssertVisible(later);
                 AssertHidden(first, firstEffect);
+            }
+            finally
+            {
+                first.UnregisterDirtyVerticesCallback(moveLaterMember);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator MemberReparentedInsideMaterialRefresh_ShouldKeepNewGroupMaterial()
+        {
+            var source = CreateGroup("MaterialSource");
+            var sourceContent = CreateRect("SourceContent", source.transform);
+            var destination = CreateGroup("MaterialDestination");
+            var destinationContent = CreateRect("DestinationContent", destination.transform);
+            var first = CreateImage(sourceContent);
+            first.gameObject.AddComponent<UIFlowMeshEffect>();
+            var later = CreateImage(sourceContent);
+            var laterEffect = later.gameObject.AddComponent<UIFlowMeshEffect>();
+            yield return null;
+
+            var sourceMaterial = new Material(Shader.Find("UI/Default"));
+            var destinationMaterial = new Material(Shader.Find("UI/Default"));
+            materials.Add(sourceMaterial);
+            materials.Add(destinationMaterial);
+            var templateField = typeof(UIFlowGroupController).GetField(
+                "materialPrefab", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(templateField);
+            templateField.SetValue(source, sourceMaterial);
+            templateField.SetValue(destination, destinationMaterial);
+            // Use default Graphic materials so the real shared-material installation path runs.
+            first.material = null;
+            later.material = null;
+            var sourceUI = source.GetComponent<UIBase>();
+            var destinationUI = destination.GetComponent<UIBase>();
+            sourceUI.Show();
+            destinationUI.Show();
+            Assert.AreSame(sourceMaterial, first.material);
+            Assert.AreSame(sourceMaterial, later.material);
+
+            var moved = false;
+            Material templateAfterMove = null;
+            Material graphicMaterialAfterMove = null;
+            UnityEngine.Events.UnityAction moveLaterMember = () =>
+            {
+                if (moved) return;
+                moved = true;
+                // Material refresh follows hierarchy order, so first's dirty callback runs
+                // before the old controller reaches later in the same refresh traversal.
+                later.transform.SetParent(destinationContent, false);
+                templateAfterMove = laterEffect.materialPrefab;
+                graphicMaterialAfterMove = later.material;
+            };
+            first.RegisterDirtyVerticesCallback(moveLaterMember);
+            try
+            {
+                sourceUI.Hide();
+                Assert.IsTrue(moved, "The material refresh must invoke the real Graphic dirty callback.");
+                Assert.AreSame(destinationContent, later.transform.parent);
+                Assert.AreEqual(UIState.Showed, destinationUI.State);
+                Assert.AreSame(destinationMaterial, templateAfterMove);
+                Assert.AreSame(destinationMaterial, graphicMaterialAfterMove);
+                Assert.AreSame(destinationMaterial, laterEffect.materialPrefab,
+                    "The old material traversal must not replace the new group's template.");
+                Assert.AreSame(destinationMaterial, later.material,
+                    "The old material traversal must not reinstall its material on a moved Graphic.");
             }
             finally
             {
