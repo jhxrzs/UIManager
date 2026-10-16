@@ -16,6 +16,10 @@ namespace JH
         /// </summary>
         private static readonly char[] KeyNameSeparators = { ' ' };
 
+        // 同一物理按键可能有多个合法名称，必须保留枚举声明的全部别名。
+        private static readonly HashSet<string> DeclaredKeyNames =
+            new(Enum.GetNames(typeof(Key)), StringComparer.OrdinalIgnoreCase);
+
         /// <summary>
         ///  按键触发后的显隐行为。
         /// </summary>
@@ -140,15 +144,10 @@ namespace JH
                 return false;
             }
 
-            // 枚举名称忽略大小写，因此Leftctrl可以正确映射为LeftCtrl。
-            if (!Enum.TryParse(keyName, true, out key)) return false;
-
-            // 组合枚举文本可能被TryParse错误合并为另一个已定义数值，必须核对标准名称。
-            var parsedKeyName = Enum.GetName(typeof(Key), key);
-
-            // None不代表实际按键，且输入必须精确对应一个独立的Key名称。
-            return key != Key.None &&
-                   string.Equals(parsedKeyName, keyName, StringComparison.OrdinalIgnoreCase);
+            // 先核对完整的声明名称，既接受别名，也拒绝TryParse允许的组合枚举文本。
+            key = Key.None;
+            return DeclaredKeyNames.Contains(keyName) &&
+                   Enum.TryParse(keyName, true, out key) && key != Key.None;
         }
     }
 }
