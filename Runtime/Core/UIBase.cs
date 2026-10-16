@@ -1811,12 +1811,11 @@ namespace JH
         ///  判断快照节点当前是否仍是有效直接子UI。
         /// </summary>
         /// <param name="child">需要校验的子UI。</param>
-        /// <returns>节点有效、直接父节点未改变且活跃或持有显示预约时返回true。</returns>
+        /// <returns>快照节点仍存活且直接父节点未改变时返回true。</returns>
         private bool IsCurrentChild(UIBase child)
         {
-            // 失活的普通子UI无需重复隐藏，但有效显示预约必须由父隐藏取消。
-            return child && child.transform.parent == transform &&
-                   (child.gameObject.activeInHierarchy || child.IsCurrentShowAction());
+            // 入口资格已由FindChildren筛选；前序回调失活共同祖先不能丢弃尚未完成的隐藏。
+            return child && child.transform.parent == transform;
         }
 
         /// <summary>
