@@ -44,6 +44,7 @@ namespace JH
                 // 在编辑器或开发构建中保存请求提交的调用栈。
                 Origin = new System.Diagnostics.StackTrace(2, true).ToString();
 #else
+                // 非开发构建不采集调用栈，避免运行时诊断开销。
                 Origin = null;
 #endif
             }
