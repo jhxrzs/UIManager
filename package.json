@@ -3,7 +3,7 @@
   "version": "2.0.0",
   "displayName": "UIManager",
   "description": "基于 UniTask 的轻量级 Unity UI 管理库，支持父子联动、分组互斥、优先级抢占和可取消的异步显隐，内置缓动过渡。",
-  "unity": "6000.0",
+  "unity": "6000.4",
   "dependencies": {
     "com.unity.inputsystem": "1.19.0",
     "com.unity.ugui": "2.0.0",

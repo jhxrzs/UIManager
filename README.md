@@ -13,7 +13,7 @@ UIManager 是一个基于 UniTask 的 Unity uGUI 界面管理库。通过组件�
 
 ## 环境与安装
 
-要求 Unity 6000.0 及以上版本，使用 uGUI。
+要求 Unity 6000.4 及以上版本，使用 uGUI。更低版本的 Unity 适配将单独处理，当前版本暂不支持。
 
 在项目的 `Packages/manifest.json` 中加入以下依赖，保留项目已有的其他条目：
 
