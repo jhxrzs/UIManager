@@ -1277,8 +1277,17 @@ namespace JH
 
             if (updateSiblingIndex) BringToFront(siblings);
 
-            // 层级变化回调也可能重入显隐。
-            if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return;
+            // 状态通知和置顶回调可能改变关系，成功通知前按当前阶段重新复核。
+            if (operationCts == null)
+            {
+                // 同步调度仍可协调新兄弟，完成互斥处理后再报告成功。
+                if (!ReconcileCurrentShowSiblings(siblings, showMode, operationVersion)) return;
+            }
+            else
+            {
+                // 异步完成阶段只核验已提交关系，不重新补父链或隐藏新兄弟。
+                MaintainCommittedShowRelations(siblings, showMode, operationVersion, operationCts);
+            }
             UINotification.Invoke(this, nameof(AfterUIShowedEvent), AfterUIShowedEvent);
         }
 
