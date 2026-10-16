@@ -306,17 +306,23 @@ namespace JH
         /// <summary>执行普通显示；框架内部父链联动直接调用此入口。</summary>
         private void ExecuteShow()
         {
+            ExecuteShow(allowScheduledParents: false);
+        }
+
+        /// <summary>内部补父链可复用已完成关系调度的祖先，外部请求仍要求严格父链已显示。</summary>
+        private void ExecuteShow(bool allowScheduledParents)
+        {
             if (!this) return;
             // 已经显示时无需重复执行生命周期。
             if (_isUIStateInitialized && State is UIState.Showed) return;
 
             // 父链未就绪或更高优先级同组兄弟活跃时，本次请求保持零副作用拒绝。
-            if (!CanPreflightShow()) return;
+            if (!CanPreflightShow(allowScheduledParents)) return;
 
             UIOperationDispatcher.BeginBehavior(this, true);
 
             // 通过统一普通显示入口执行完整同步生命周期。
-            ShowNotCheckState(UIShowMode.Normal);
+            ShowNotCheckState(UIShowMode.Normal, allowScheduledParents: allowScheduledParents);
         }
 
         /// <summary>
@@ -631,8 +637,9 @@ namespace JH
         /// <param name="showMode">当前显示请求的来源模式。</param>
         /// <param name="parentCascadeSource">父级联请求的直接发起父UI；普通显示传null。</param>
         /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；普通显示传-1。</param>
+        /// <param name="allowScheduledParents">内部补父链时允许祖先仍在已完成关系调度的显示过渡中。</param>
         private void ShowNotCheckState(UIShowMode showMode, UIBase parentCascadeSource = null,
-            int parentCascadeSourceOperationVersion = -1)
+            int parentCascadeSourceOperationVersion = -1, bool allowScheduledParents = false)
         {
             // 新版本必须在取消旧异步操作前登记显示预约，使取消回调能够参与兄弟优先级仲裁。
             var operationVersion = BeginSynchronousShowHideAction(
@@ -640,6 +647,7 @@ namespace JH
                 parentCascadeSource,
                 parentCascadeSourceOperationVersion);
 
+            if (allowScheduledParents) _allowScheduledParentsVersion = operationVersion;
             var siblings = ListPool<UIBase>.Get();
             var parents = ListPool<UIBase>.Get();
             var children = ListPool<UIBase>.Get();
@@ -1001,7 +1009,7 @@ namespace JH
                 {
                     var eachParent = parents[i];
                     if (!IsCurrentParent(eachParent)) continue;
-                    if (!eachParent.IsShowRelationReady(true)) eachParent.ExecuteShow();
+                    if (!eachParent.IsShowRelationReady(true)) eachParent.ExecuteShow(allowScheduledParents: true);
                     if (!MaintainAutoParentResult(eachParent, operationVersion)) return false;
                     if (!MaintainCurrentShowAdmission(showMode, operationVersion)) return false;
                 }

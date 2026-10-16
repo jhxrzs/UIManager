@@ -10,6 +10,55 @@ namespace JH.Test_UIManager
 {
     public partial class Test_UIBase
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void KeyboardSwitch_HiddenBeforeStart_ShouldStillWakePanel(bool isAsync)
+        {
+            var input = new InputTestFixture();
+            input.Setup();
+            UIBaseWithShowHideInteraction host = null;
+            try
+            {
+                InputSystem.settings.updateMode = InputSettings.UpdateMode.ProcessEventsManually;
+                var keyboard = InputSystem.AddDevice<Keyboard>();
+                var key = new KeyEntity { IsAsync = isAsync };
+                typeof(KeyEntity).GetField("keyNames", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(key, "Space");
+                typeof(KeyEntity).GetField("action", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(key, ShowHideAction.Switch);
+                var go = CreateObject("EarlyHiddenKeyboardHost", CreateObject("EarlyHiddenKeyboardRoot").transform);
+                go.SetActive(false);
+                host = go.AddComponent<UIBaseWithShowHideInteraction>();
+                typeof(UIBaseWithShowHideInteraction)
+                    .GetField("keyInteraction", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(host, new List<KeyEntity> { key });
+                SetUIBasePrivateField(host, "state", UIState.Showed);
+                host.ShowActions += () => go.SetActive(true);
+                host.HideActions += () => go.SetActive(false);
+                var shows = 0;
+                host.AfterUIShowedEvent += () => shows++;
+
+                // 激活只触发真实 Awake/OnEnable；本用例不让出帧，也不手动调用 Start。
+                go.SetActive(true);
+                Assert.IsFalse(host.IsUIStateInitialized);
+                host.Hide();
+                Assert.IsFalse(go.activeInHierarchy);
+                Assert.IsTrue(host.enabled);
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Space));
+                InputSystem.Update();
+
+                Assert.IsTrue(keyboard.spaceKey.wasPressedThisFrame, "用例必须实际产生一次按键。");
+                Assert.AreEqual(UIState.Showed, host.State, "首次 Start 前隐藏的面板仍须能由快捷键唤醒。");
+                Assert.IsTrue(go.activeInHierarchy);
+                Assert.AreEqual(1, shows);
+            }
+            finally
+            {
+                try { if (host) Object.DestroyImmediate(host.gameObject); }
+                finally { input.TearDown(); }
+            }
+        }
+
         [TestCase(InputUpdateType.Dynamic, InputSettings.UpdateMode.ProcessEventsInDynamicUpdate)]
         [TestCase(InputUpdateType.Fixed, InputSettings.UpdateMode.ProcessEventsInFixedUpdate)]
         [TestCase(InputUpdateType.Manual, InputSettings.UpdateMode.ProcessEventsManually)]

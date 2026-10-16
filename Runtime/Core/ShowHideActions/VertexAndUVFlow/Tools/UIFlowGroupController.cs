@@ -484,6 +484,9 @@ namespace JH
                 // 缓存当前子组件，避免同一循环重复访问列表索引。
                 var flowMeshEffect = sortedFlowMeshEffects[index];
 
+                // 前一个Graphic的标脏回调可能同步销毁或迁移后续成员，旧快照不能覆盖新组状态。
+                if (!IsOwnedFlowMeshEffect(flowMeshEffect)) continue;
+
                 // 当前子物体的启动时刻只由排序索引和统一间隔决定。
                 var delay = index * safeDelayBetween;
 
@@ -693,6 +696,9 @@ namespace JH
             // 每个UIFlowMeshEffect自行判断Graphic是否已经拥有必须保留的自定义材质。
             foreach (var flowMeshEffect in flowMeshEffects)
             {
+                // 材质和顶点标脏回调同样可能同步改变后续成员归属，逐次下发前必须复查。
+                if (!IsOwnedFlowMeshEffect(flowMeshEffect)) continue;
+
                 // 通过统一入口消除父子Awake顺序差异，并保留每个Graphic已有的自定义材质。
                 flowMeshEffect.ApplySharedMaterial(materialPrefab);
             }

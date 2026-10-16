@@ -25,14 +25,35 @@ namespace JH
         /// </summary>
         [SerializeField] private List<KeyEntity> keyInteraction = new();
 
+        // 保留实际绑定的实体，首次 Start 前替换配置时也能清理旧监听。
+        private ButtonEntity[] _boundButtonInteractions;
+        private ToggleEntity[] _boundToggleInteractions;
+
+        /// <inheritdoc />
+        protected override void Awake()
+        {
+            base.Awake();
+            // 首次 Start 前也可能被父级联或公开 API 隐藏，必须提前保留外部唤醒入口。
+            InitializeInteractions();
+        }
+
         /// <inheritdoc />
         protected override void Start()
         {
-            // 先执行UI基类的状态初始化。
+            // 兼容 AddComponent 后、首次 Start 前完成的运行时配置，重复初始化不累积监听。
+            InitializeInteractions();
+            // 初始化通知可能销毁面板；其后不得重新绑定已经由 OnDestroy 清理的输入。
             base.Start();
+        }
+
+        private void InitializeInteractions()
+        {
+            UnbindInteractions();
+            var buttons = _boundButtonInteractions = buttonInteraction.ToArray();
+            var toggles = _boundToggleInteractions = toggleInteraction.ToArray();
 
             // 初始化全部按钮显隐交互。
-            foreach (var buttonEntity in buttonInteraction)
+            foreach (var buttonEntity in buttons)
             {
                 // 空元素不参与初始化，避免未完成的Inspector配置阻断其余交互。
                 if (buttonEntity == null) continue;
@@ -40,7 +61,7 @@ namespace JH
             }
 
             // 初始化全部Toggle显隐交互。
-            foreach (var toggleEntity in toggleInteraction)
+            foreach (var toggleEntity in toggles)
             {
                 // 空元素不参与初始化。
                 if (toggleEntity == null) continue;
@@ -55,8 +76,8 @@ namespace JH
                 keyEntity.Init(this);
             }
 
+            if (!this) return;
             // 使用Input System全局更新回调，使UI节点失活后仍可接收用于重新显示的按键。
-            InputSystem.onAfterUpdate -= OnInputSystemAfterUpdate;
             InputSystem.onAfterUpdate += OnInputSystemAfterUpdate;
         }
 
@@ -91,10 +112,19 @@ namespace JH
         /// </summary>
         protected virtual void OnDestroy()
         {
+            UnbindInteractions();
+        }
+
+        private void UnbindInteractions()
+        {
             // 静态事件必须主动解除，避免Input System继续持有已经销毁的UI。
             InputSystem.onAfterUpdate -= OnInputSystemAfterUpdate;
-            foreach (var buttonEntity in buttonInteraction) buttonEntity?.Unbind();
-            foreach (var toggleEntity in toggleInteraction) toggleEntity?.Unbind();
+            if (_boundButtonInteractions != null)
+                foreach (var buttonEntity in _boundButtonInteractions) buttonEntity?.Unbind();
+            if (_boundToggleInteractions != null)
+                foreach (var toggleEntity in _boundToggleInteractions) toggleEntity?.Unbind();
+            _boundButtonInteractions = null;
+            _boundToggleInteractions = null;
         }
 
 #if UNITY_EDITOR
