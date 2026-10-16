@@ -20,6 +20,8 @@ namespace JH
         private bool _isShowing;
         private bool _isTransitioning;
         private int _transitionVersion;
+        private Vector3 _lastAppliedAngle;
+        private bool _hasAppliedAngle;
 
         #region 显示配置
 
@@ -198,7 +200,13 @@ namespace JH
         {
             token.ThrowIfCancellationRequested();
             // 反向播放及取消后重试均从当前实际姿态开始，不将进度直接套到另一条曲线上。
-            _transitionFrom = EffectSerializedRectTransform.GetInstance(transform as RectTransform);
+            var rect = transform as RectTransform;
+            _transitionFrom = EffectSerializedRectTransform.GetInstance(rect);
+            // Unity 读回的欧拉角会把负角度和整圈数归一化。保留本控制器上次写入的角度分支，
+            // 让过冲反向、取消重试和有意配置的多圈路径连续；外部改变旋转时仍以实际姿态为准。
+            if (_hasAppliedAngle &&
+                Quaternion.Angle(rect.localRotation, Quaternion.Euler(_lastAppliedAngle)) < 0.01f)
+                _transitionFrom.angle = _lastAppliedAngle;
             _transitionFromAmount = EffectAmount;
             _transitionGlobalEase = isShowing ? showEase : hideEase;
             _isShowing = isShowing;
@@ -252,7 +260,7 @@ namespace JH
                         _isShowing ? showSizeDeltaEase : hideSizeDeltaEase,
                         _isShowing ? showPivotEase : hidePivotEase)
                     : EffectSerializedRectTransform.LerpUnclamped(_transitionFrom, target, _transitionEasedProgress);
-                animated.Apply(transform as RectTransform);
+                ApplyPose(animated);
                 return;
             }
 
@@ -262,7 +270,15 @@ namespace JH
                 Ease.Linear, Ease.Linear, Ease.Linear, Ease.Linear, Ease.Linear);
 
             // 应用到RectTransform
-            current.Apply(transform as RectTransform);
+            ApplyPose(current);
+        }
+
+        private void ApplyPose(EffectSerializedRectTransform pose)
+        {
+            pose.Apply(transform as RectTransform);
+            // 记录实际发出的未归一化值，取消不清空；不能把目标改成最短角，否则会丢失多圈动画。
+            _lastAppliedAngle = pose.angle;
+            _hasAppliedAngle = true;
         }
     }
 }
