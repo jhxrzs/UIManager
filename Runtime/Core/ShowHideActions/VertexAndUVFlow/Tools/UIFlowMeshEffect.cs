@@ -479,6 +479,9 @@ namespace JH
             // 池化TMP重新启用后恢复唯一一次渲染前订阅。
             SubscribeTMPPreRenderText();
 
+            // 深层新增不会通知Controller根节点，成员必须在首次网格重建前主动同步组状态。
+            SynchronizeGroupController();
+
             // 重新启用后必须让Graphic抛弃上一次动效末帧。
             MarkVerticesDirty();
         }
@@ -517,6 +520,8 @@ namespace JH
             // 工具影子运行时会换到嵌套排序Canvas，必须按新的rootCanvas重新取相机。
             RefreshUICamera();
 
+            SynchronizeGroupController();
+
             // 新Canvas拥有独立的Graphic重建时机，立即标脏以提交正确坐标曲面。
             MarkVerticesDirty();
         }
@@ -526,13 +531,21 @@ namespace JH
             // 换父后Graphic引用不变，但Canvas和相机语义可能已经完全不同。
             InitializeReferences();
 
-            // 直接或间接父级变化后核对实际最近Controller，离开旧组时立即恢复可见状态。
-            var currentController = GetComponentInParent<UIFlowGroupController>(true);
-            if (groupController && groupController != currentController)
-                DetachGroupController(groupController);
+            SynchronizeGroupController();
 
             // 新父节点下重新生成屏幕终点对应的本地网格。
             MarkVerticesDirty();
+        }
+
+        private void SynchronizeGroupController()
+        {
+            // GetComponentInParent包含自身，Controller与Graphic位于同一节点时也能登记。
+            var currentController = GetComponentInParent<UIFlowGroupController>(true);
+            if (groupController && groupController != currentController)
+                DetachGroupController(groupController);
+            // 停用的效果保留Graphic原貌；对象或组件重新启用时再取得当时的组状态。
+            if (isActiveAndEnabled && currentController)
+                currentController.RegisterFlowMeshEffect(this);
         }
 
         private void OnValidate()

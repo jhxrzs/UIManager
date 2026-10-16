@@ -171,6 +171,13 @@ namespace JH
         /// </summary>
         private readonly List<UIFlowMeshEffect> sortedFlowMeshEffects = new();
 
+        // Graphic标脏回调可以同步创建或启用成员；先记录请求，避免重入改写正在遍历的列表。
+        private bool isUpdatingGroupFlow;
+        private bool hierarchyRefreshPending;
+        private bool flowUpdatePending;
+        private bool isDestroying;
+        private float pendingLinearProgress;
+
         /// <summary>
         ///  初始化基类UI显示和隐藏事件订阅。
         /// </summary>
@@ -197,14 +204,20 @@ namespace JH
         /// </summary>
         private void RefreshFlowHierarchy()
         {
-            // 完整扫描只发生在启用、显隐开始或明确层级变化时，不进入动画逐帧路径。
-            RefreshOwnedFlowMeshEffects();
-
-            // 新成员独立核对共享材质所有权，已经配置的自定义材质始终保留。
-            SetMaterialPrefab();
-
-            // 成员变化会影响组中心和时间轴，按当前进度重新建立统一主路径。
+            // 完整扫描只发生在成员或层级变化时；重入期间留到当前遍历结束后处理。
+            hierarchyRefreshPending = true;
             ApplyGroupFlow(effectAmount);
+        }
+
+        /// <summary>
+        ///  新启用或换父的成员主动加入最近的控制器，并立即取得当前显隐状态。
+        /// </summary>
+        internal void RegisterFlowMeshEffect(UIFlowMeshEffect member)
+        {
+            if (isDestroying || !isActiveAndEnabled || !IsOwnedFlowMeshEffect(member)) return;
+            // 启用整组时扫描可能已经包含当前成员，不重复扫描或触发标脏回调。
+            if (flowMeshEffects.Contains(member)) return;
+            RefreshFlowHierarchy();
         }
 
         /// <summary>
@@ -397,6 +410,37 @@ namespace JH
         /// </summary>
         /// <param name="linearProgress">Controller当前零到一线性进度。</param>
         private void ApplyGroupFlow(float linearProgress)
+        {
+            if (isDestroying) return;
+            pendingLinearProgress = linearProgress;
+            flowUpdatePending = true;
+            if (isUpdatingGroupFlow) return;
+
+            isUpdatingGroupFlow = true;
+            try
+            {
+                while (flowUpdatePending || hierarchyRefreshPending)
+                {
+                    var refreshHierarchy = hierarchyRefreshPending;
+                    var progress = pendingLinearProgress;
+                    hierarchyRefreshPending = false;
+                    flowUpdatePending = false;
+                    if (refreshHierarchy)
+                    {
+                        RefreshOwnedFlowMeshEffects();
+                        SetMaterialPrefab();
+                    }
+
+                    ApplyGroupFlowCore(progress);
+                }
+            }
+            finally
+            {
+                isUpdatingGroupFlow = false;
+            }
+        }
+
+        private void ApplyGroupFlowCore(float linearProgress)
         {
             // 每次消费缓存前执行无分配所有权校验，覆盖禁用组件错过层级回调的极端情况。
             PruneUnownedFlowMeshEffects();
@@ -686,6 +730,7 @@ namespace JH
         /// </summary>
         protected override void OnDestroy()
         {
+            isDestroying = true;
             // Controller禁用期间层级仍可能变化，销毁前重新扫描避免遗漏临时组状态。
             RefreshOwnedFlowMeshEffects();
 
@@ -818,7 +863,7 @@ namespace JH
                 }
 
                 // 新增组件已经改变直属集合，统一主路径建立前必须刷新运行时缓存。
-                RefreshOwnedFlowMeshEffects();
+                RefreshFlowHierarchy();
 
                 // 全部组件补齐后立即建立统一主路径，编辑器预览不会显示旧的各自飞行状态。
                 ApplyGroupFlow(effectAmount);
@@ -863,14 +908,11 @@ namespace JH
             // Prefab编辑阶段可能没有Canvas，统一相机入口会安全使用Overlay空相机语义。
             RefreshUICamera();
 
-            // Inspector或ContextMenu可能改变子物体组件，材质与路径同步前刷新直属缓存。
-            RefreshOwnedFlowMeshEffects();
+            // 交给与运行时相同的刷新入口，避免Graphic回调重入时修改成员列表。
+            hierarchyRefreshPending = true;
 
             // 缺少显式材质时尝试补全包内默认共享材质。
             FindShaderByNameOnValidate();
-
-            // 将材质模板同步到直属子组件，同时保留它们已有的自定义材质。
-            SetMaterialPrefab();
 
             // 基类限制进度并触发OnEffectAmountChanged，统一主路径只从一个入口重建。
             base.OnValidate();
