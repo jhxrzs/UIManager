@@ -52,6 +52,9 @@ namespace JH
             // 同一轮控件通知的前序监听可能已经销毁面板，旧通知快照仍可能调用到这里。
             if (!ui) return;
 
+            // 主动禁用交互组件时暂停输入；仅 GameObject 失活仍保留外部唤醒能力。
+            if (ui is UIBaseWithShowHideInteraction interaction && !interaction.enabled) return;
+
             // 显示行为统一进入显示方法，避免各类输入重复维护同步与异步分支。
             if (action == ShowHideAction.ToShow)
             {

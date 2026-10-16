@@ -77,6 +77,8 @@ public class PanelExample : MonoBehaviour
 
 配置的按钮、Toggle 监听会在面板销毁时自动解除，隐藏时保留，不影响控件上的其他监听。直接使用交互实体时，重复调用 `Init(panel)` 会先解除旧绑定；不再使用时调用 `Unbind()` 释放监听。
 
+主动禁用 `UIBaseWithShowHideInteraction` 组件会暂停按钮、Toggle 和键盘交互，重新启用后恢复。仅隐藏界面或将其 GameObject 失活时，只要组件仍启用，外部控件和快捷键仍可重新显示界面。显式调用显隐 API，以及手动绑定到普通 `UIBase` 的交互实体，不受此输入开关限制。
+
 ## 生命周期
 
 | 状态 | 含义 |

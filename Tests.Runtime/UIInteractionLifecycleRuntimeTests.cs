@@ -193,6 +193,7 @@ namespace JH.Test_UIManager
             var button = CreateLifecycleControl(false, isAsync);
             var toggle = CreateLifecycleControl(true, isAsync);
             var host = CreateLifecycleHost(button, toggle);
+            host.enabled = true; // 本用例验证隐藏恢复，交互组件本身保持启用。
             StartLifecycleHost(host);
 
             host.Show();
