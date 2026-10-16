@@ -71,6 +71,9 @@ namespace JH
         /// </summary>
         private bool _isUIStateInitialized;
 
+        /// <summary>供后挂载动效区分已执行的状态与尚待初始化的序列化初态。</summary>
+        internal bool IsUIStateInitialized => _isUIStateInitialized;
+
         /// <summary>
         ///  严格Showed序列化初态是否正在等待启用父UI完成初始化。
         /// </summary>

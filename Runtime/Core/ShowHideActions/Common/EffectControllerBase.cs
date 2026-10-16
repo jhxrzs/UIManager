@@ -14,6 +14,8 @@ namespace JH
     {
         private CancellationToken _effectLifetimeToken;
         private bool _isDestroyed;
+        private bool _hasStarted;
+        private bool _initialPresentationPending = true;
 
         /// <summary>  
         ///  动效应用的的UI面板
@@ -99,18 +101,53 @@ namespace JH
             uiBase.HideAsyncActions += ExecuteHideAsync;
             uiBase.ShowActions += ExecuteShow;
             uiBase.HideActions += ExecuteHide;
+            uiBase.OnStateChanged += SynchronizeInitialPresentationAfterStateChange;
+        }
+
+        /// <summary>
+        ///  等派生类 Awake 及调用方本帧配置结束后，补齐后挂载动效的稳定表现。
+        /// </summary>
+        protected virtual void Start()
+        {
+            _hasStarted = true;
+            TrySynchronizeInitialPresentation();
+        }
+
+        private void SynchronizeInitialPresentationAfterStateChange(UIState previous, UIState current)
+        {
+            TrySynchronizeInitialPresentation();
+        }
+
+        private void TrySynchronizeInitialPresentation()
+        {
+            if (!_hasStarted || !_initialPresentationPending || _isDestroyed || !this || !uiBase ||
+                !uiBase.IsUIStateInitialized) return;
+
+            // 不回放 UI 生命周期，也不把新效果加入已经捕获的异步行为快照。
+            // 过渡中新增的效果等待稳定状态；后续正常行为先到达时会撤销补同步。
+            if (uiBase.State == UIState.Showed) ExecuteShow();
+            else if (uiBase.State == UIState.Hided) ExecuteHide();
+        }
+
+        private void CompleteInitialPresentation()
+        {
+            if (!_initialPresentationPending) return;
+            _initialPresentationPending = false;
+            if (uiBase) uiBase.OnStateChanged -= SynchronizeInitialPresentationAfterStateChange;
         }
 
         private void ExecuteShow()
         {
             // 委托快照可能仍包含已在同轮较早回调中移除的动效。
             if (_isDestroyed || !this || _effectLifetimeToken.IsCancellationRequested) return;
+            CompleteInitialPresentation();
             OnUIShow();
         }
 
         private void ExecuteHide()
         {
             if (_isDestroyed || !this || _effectLifetimeToken.IsCancellationRequested) return;
+            CompleteInitialPresentation();
             OnUIHide();
         }
 
@@ -122,6 +159,7 @@ namespace JH
             operationToken.ThrowIfCancellationRequested();
             if (_isDestroyed || !this || _effectLifetimeToken.IsCancellationRequested) return;
 
+            CompleteInitialPresentation();
             // 包装整个虚方法，让派生控制器的准备与收尾也受同一寿命约束。
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(operationToken, _effectLifetimeToken);
             try
@@ -185,6 +223,7 @@ namespace JH
                 uiBase.HideAsyncActions -= ExecuteHideAsync;
                 uiBase.ShowActions -= ExecuteShow;
                 uiBase.HideActions -= ExecuteHide;
+                uiBase.OnStateChanged -= SynchronizeInitialPresentationAfterStateChange;
             }
         }
 
