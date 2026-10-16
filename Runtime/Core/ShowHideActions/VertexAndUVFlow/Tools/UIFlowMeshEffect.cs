@@ -1414,23 +1414,7 @@ namespace JH
         {
             // Graphic.canvas可正确返回运行时嵌套排序Canvas，缺失时再向父级查找。
             var ownerCanvas = graphic ? graphic.canvas : GetComponentInParent<Canvas>();
-            if (!ownerCanvas)
-            {
-                uiCamera = null;
-                return;
-            }
-
-            // 嵌套Canvas的renderMode字段不代表最终屏幕语义，必须以rootCanvas为准。
-            var rootCanvas = ownerCanvas.rootCanvas ? ownerCanvas.rootCanvas : ownerCanvas;
-            if (rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay)
-            {
-                uiCamera = null;
-                return;
-            }
-
-            // ScreenSpaceCamera和WorldSpace优先使用根Canvas相机，缺失时才安全回退。
-            uiCamera = rootCanvas.worldCamera ? rootCanvas.worldCamera : ownerCanvas.worldCamera;
-            if (!uiCamera) uiCamera = Camera.main;
+            uiCamera = UIFlowCanvasCamera.Resolve(ownerCanvas);
         }
 
         /// <summary>

@@ -442,6 +442,9 @@ namespace JH
 
         private void ApplyGroupFlowCore(float linearProgress)
         {
+            // Canvas相机和Camera.main可能在动画期间更换，组路径与子网格必须读取同一规则。
+            RefreshUICamera();
+
             // 每次消费缓存前执行无分配所有权校验，覆盖禁用组件错过层级回调的极端情况。
             PruneUnownedFlowMeshEffects();
 
@@ -665,13 +668,7 @@ namespace JH
         /// </summary>
         private void RefreshUICamera()
         {
-            // Controller可能在Prefab编辑阶段暂时没有Canvas，缺失时按Overlay空相机语义降级。
-            var canvas = GetComponentInParent<Canvas>();
-
-            // Overlay Canvas不需要相机，Camera和World Space Canvas使用其正式worldCamera。
-            uiCamera = canvas && canvas.renderMode != RenderMode.ScreenSpaceOverlay
-                ? canvas.worldCamera
-                : null;
+            uiCamera = UIFlowCanvasCamera.Resolve(GetComponentInParent<Canvas>());
         }
 
         /// <summary>
