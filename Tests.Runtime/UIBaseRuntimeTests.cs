@@ -262,7 +262,7 @@ namespace JH.Test_UIManager
         }
 
         /// <summary>
-        ///  验证三层UI按根到直接父节点顺序显示，每一层生命周期均执行一次。
+        ///  验证三层UI按根到直接父节点同步启动关系调度，每一层生命周期均执行一次。
         /// </summary>
         [UnityTest]
         public IEnumerator ShowAsync_ThreeLevelHierarchy_ShouldInvokeEachLevelOnce()
@@ -287,7 +287,7 @@ namespace JH.Test_UIManager
                 {
                     actionCounts[index]++;
 
-                    // 根祖先保持挂起，用于证明父节点不会与祖先并发重复启动。
+                    // 根祖先保持挂起，用于证明下游调度不等待动画、祖先也不会被重复启动。
                     return index == 0
                         ? UniTask.WaitUntil(() => releaseGrandParent)
                         : UniTask.CompletedTask;
@@ -304,11 +304,11 @@ namespace JH.Test_UIManager
             var parentCountBeforeRelease = actionCounts[1];
             releaseGrandParent = true;
 
-            // 根祖先必须只启动一次，直接父UI必须等祖先完成后才能开始。
+            // 根祖先只启动一次，直接父UI也必须已经启动。
             Assert.AreEqual(1, grandParentCountBeforeRelease,
                 "根祖先挂起期间只能启动一次显示处理器");
-            Assert.AreEqual(0, parentCountBeforeRelease,
-                "直接父UI不得在根祖先完成前并发启动");
+            Assert.AreEqual(1, parentCountBeforeRelease,
+                "直接父UI的关系调度不得等待根祖先动画完成");
 
             // 解除根祖先闸门后再等待完整父链收口。
             yield return WaitForTask(showOperation);
@@ -592,10 +592,10 @@ namespace JH.Test_UIManager
         }
 
         /// <summary>
-        ///  验证父UI异步显示会按Hierarchy顺序等待全部标记子UI并跳过未标记子UI。
+        ///  验证父UI同步启动全部标记子UI的关系调度，等待全部表现并跳过未标记子UI。
         /// </summary>
         [UnityTest]
-        public IEnumerator ShowAsync_MarkedChildren_ShouldWaitInHierarchyOrderAndSkipUnmarked()
+        public IEnumerator ShowAsync_MarkedChildren_ShouldScheduleTogetherAndSkipUnmarked()
         {
             // 创建两个不同互斥组的标记子UI和一个未标记子UI。
             var container = CreateObject("MarkedChildrenAsyncRoot");
@@ -607,7 +607,7 @@ namespace JH.Test_UIManager
             secondChild.ShowWithParent = true;
             SetUIBasePrivateField(secondChild, "mutexGroup", 1);
 
-            // 第一个子UI保持挂起，用于观察第二个子UI和父After是否会被提前启动。
+            // 第一个子UI保持挂起，用于观察第二个子UI已启动，但父After仍须等待收尾。
             var releaseFirstChild = false;
             var firstChildStarted = false;
             var secondChildActionCount = 0;
@@ -641,13 +641,13 @@ namespace JH.Test_UIManager
             releaseFirstChild = true;
             yield return WaitForTask(showOperation);
 
-            // 父操作必须等待第一个子UI，且第二个子UI不得与其并发启动。
+            // 父操作必须观察第一个子UI，但第二个子UI的调度不得被动画拖延。
             Assert.IsTrue(firstChildStarted, "第一个标记子UI应启动异步显示行为");
             Assert.IsFalse(completedWhileFirstPending, "标记子UI未完成时父ShowAsync不得提前完成");
-            Assert.AreEqual(0, secondCountWhileFirstPending, "第二个标记子UI应等待前一个子UI完成");
+            Assert.AreEqual(1, secondCountWhileFirstPending, "第二个标记子UI应已在同一轮同步调度中启动");
             Assert.AreEqual(0, parentAfterWhileFirstPending, "默认子树未完成时父After不得触发");
 
-            // 解除闸门后父UI与两个标记子UI应依次完成，未标记子UI完全不参与。
+            // 解除闸门后父UI与两个标记子UI应全部完成，未标记子UI完全不参与。
             Assert.IsNull(showOperation.Result, $"父UI异步级联显示不应失败：{showOperation.Result}");
             Assert.AreEqual(UIState.Showed, parentUI.State, "父UI应在默认子树完成后提交Showed");
             Assert.AreEqual(UIState.Showed, firstChild.State, "第一个标记子UI应完成显示");

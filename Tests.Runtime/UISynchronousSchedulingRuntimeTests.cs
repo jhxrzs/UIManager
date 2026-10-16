@@ -11,6 +11,33 @@ namespace JH.Test_UIManager
     {
         [TestCase(false)]
         [TestCase(true)]
+        public void Preflight_DeeperAncestorBlocked_ShouldNotOpenEarlierRoot(bool strictRoot)
+        {
+            var root = CreateUI("UnopenedRoot", CreateObject("Container").transform);
+            var middle = CreateUI("Middle", root.transform);
+            var holder = CreateUI("MiddleHolder", root.transform);
+            holder.MutexPriority = 10;
+            SetUIBasePrivateField(holder, "state", UIState.Showed);
+            SetUIBasePrivateField(holder, "_isUIStateInitialized", true);
+            if (strictRoot) root.ParentShowPolicy = UIParentShowPolicy.RequireParentChainShowedForDirectShow;
+            var child = CreateUI("Child", middle.transform);
+            var calls = 0;
+            root.BeforeUIShowEvent += () => calls++;
+            root.ShowActions += () => calls++;
+            middle.BeforeUIShowEvent += () => calls++;
+            child.BeforeUIShowEvent += () => calls++;
+
+            child.Show();
+
+            Assert.AreEqual(0, calls);
+            Assert.AreEqual(UIState.Hided, root.State);
+            Assert.AreEqual(UIState.Hided, middle.State);
+            Assert.AreEqual(UIState.Hided, child.State);
+            Assert.AreEqual(UIState.Showed, holder.State);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
         public void Preflight_BlockedAncestor_ShouldPreserveChildSiblingAndAllNotifications(bool blockGrandparent)
         {
             var child = CreateBlockedAutoChain(blockGrandparent, out var blocked, out _, out var parent);
@@ -159,6 +186,68 @@ namespace JH.Test_UIManager
         }
 
         [UnityTest]
+        public IEnumerator Scheduling_ReparentDuringAnimation_ShouldNotHideNewParentsExistingPanel()
+        {
+            var first = CreateUI("FirstParent", CreateObject("FirstContainer").transform);
+            var second = CreateUI("SecondParent", CreateObject("SecondContainer").transform);
+            second.Show();
+            var existing = CreateUI("Existing", second.transform);
+            existing.Show();
+            var child = CreateUI("Moving", first.transform);
+            var gate = new UniTaskCompletionSource();
+            child.ShowAsyncActions += _ => gate.Task;
+            var hides = 0;
+            existing.HideActions += () => hides++;
+            var operation = CaptureException(child.ShowAsync(CancellationToken.None));
+            child.transform.SetParent(second.transform, false);
+            gate.TrySetResult();
+            yield return WaitForTask(operation);
+
+            Assert.That(operation.Result, Is.InstanceOf<OperationCanceledException>());
+            Assert.AreEqual(UIState.Hided, child.State);
+            Assert.AreEqual(UIState.Showed, existing.State);
+            Assert.AreEqual(0, hides);
+        }
+
+        [UnityTest]
+        public IEnumerator Scheduling_AnimationFailure_ShouldNotUndoAlreadyOpenedAncestor()
+        {
+            var parent = CreateUI("Parent", CreateObject("Container").transform);
+            var child = CreateUI("Child", parent.transform);
+            var gate = new UniTaskCompletionSource();
+            child.ShowAsyncActions += _ => gate.Task;
+            var operation = CaptureException(child.ShowAsync(CancellationToken.None));
+            gate.TrySetException(new InvalidOperationException("presentation failed"));
+            yield return WaitForTask(operation);
+            Assert.That(operation.Result, Is.InstanceOf<InvalidOperationException>());
+            Assert.AreEqual(UIState.Showed, parent.State);
+            Assert.AreEqual(UIState.Showing, child.State, "表现失败不伪造成功，保留原有失败收尾语义。");
+        }
+
+        [UnityTest]
+        public IEnumerator Scheduling_OverrideThrowsBeforeReturningTask_ShouldStillObserveStartedAncestor()
+        {
+            var parent = CreateUI("Parent", CreateObject("Container").transform);
+            var childObject = CreateObject("ThrowingChild", parent.transform);
+            var child = childObject.AddComponent<ThrowingShowUI>();
+            child.enabled = false;
+            var gate = new UniTaskCompletionSource();
+            parent.ShowAsyncActions += _ => gate.Task;
+            var operation = CaptureException(child.ShowAsync(CancellationToken.None));
+            try
+            {
+                yield return null;
+                Assert.IsFalse(operation.IsCompleted, "覆写钩子同步抛错也不能丢掉已经启动的祖先动画任务。");
+            }
+            finally { gate.TrySetResult(); }
+            yield return WaitForTask(operation);
+            Assert.That(operation.Result, Is.InstanceOf<InvalidOperationException>());
+            Assert.AreEqual("override failed", operation.Result.Message);
+            Assert.AreEqual(UIState.Showed, parent.State);
+            Assert.AreEqual(UIState.Showing, child.State);
+        }
+
+        [UnityTest]
         public IEnumerator Scheduling_OptionalBlockedChild_ShouldNotRejectParent()
         {
             var panel = CreateUI("Panel", CreateObject("Container").transform);
@@ -191,6 +280,14 @@ namespace JH.Test_UIManager
             Assert.AreEqual(0, firstCalls);
             Assert.AreEqual(UIState.Hided, first.State);
             Assert.AreEqual(UIState.Showed, last.State);
+        }
+    }
+
+    public sealed class ThrowingShowUI : UIBase
+    {
+        protected override UniTask OnUIShowAsync(CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException("override failed");
         }
     }
 }

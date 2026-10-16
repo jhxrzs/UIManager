@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine.Pool;
 
 namespace JH
@@ -30,7 +29,7 @@ namespace JH
                 chain.Add(this);
                 foreach (var panel in chain)
                 {
-                    // 已经完成显示的祖先不重新请求，也不会重新触发其默认子面板。
+                    // 已就绪的祖先不重新请求，也不会重新触发其默认子面板。
                     if (panel != this && panel.IsShowRelationReady(allowScheduledParents))
                     {
                         planned.Add(panel);
@@ -70,6 +69,5 @@ namespace JH
                 LogShowRejection(ShowRejectionReason.PreflightAncestorRejected, UIShowMode.Normal, false, panel);
             return false;
         }
-
     }
 }

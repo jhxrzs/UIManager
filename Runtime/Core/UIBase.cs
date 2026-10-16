@@ -808,8 +808,9 @@ namespace JH
                 ThrowHandlerExceptions(schedulingException, presentationException);
 
                 // 异步恢复只复核并提交完成状态，不再打开父链、隐藏兄弟或发现默认子节点。
-                MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
+                MaintainCommittedShowRelations(siblings, showMode, operationVersion, operationCts);
                 AfterUIShowedInvoke(siblings, operationVersion, showMode, operationCts, updateSiblingIndex: false);
+                MaintainCommittedShowRelations(siblings, showMode, operationVersion, operationCts);
                 ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
             }
             catch (Exception operationException)
@@ -996,7 +997,7 @@ namespace JH
                 {
                     var eachParent = parents[i];
                     if (!IsCurrentParent(eachParent)) continue;
-                    eachParent.ExecuteShow();
+                    if (!eachParent.IsShowRelationReady(true)) eachParent.ExecuteShow();
                     if (!MaintainAutoParentResult(eachParent, operationVersion)) return false;
                     if (!MaintainCurrentShowAdmission(showMode, operationVersion)) return false;
                 }
@@ -1109,7 +1110,7 @@ namespace JH
         /// <param name="children">用于保存本轮直接子UI快照的列表。</param>
         /// <param name="operationVersion">当前父UI的显隐操作版本。</param>
         /// <param name="operationCts">当前父UI本轮显示操作的取消源。</param>
-        /// <returns>全部目标子UI按Hierarchy顺序完成后的任务。</returns>
+        /// <returns>全部已调度目标子UI的表现结束后的任务。</returns>
         private async UniTask ShowChildrenWithParentAsyncInvoke(List<UIBase> children, int operationVersion,
             CancellationTokenSource operationCts)
         {
@@ -1119,37 +1120,37 @@ namespace JH
                 Exception schedulingException = null;
                 try
                 {
-            // 同步调度阶段捕获直接子UI；动画结束后不再发现新节点。
-            FindChildrenForParentShow(children);
+                    // 同步调度阶段捕获直接子UI；动画结束后不再发现新节点。
+                    FindChildrenForParentShow(children);
 
-            // 按Hierarchy顺序启动关系调度，不等待上一个子UI动画。
-            for (var i = 0; i < children.Count; i++)
-            {
-                // 每次访问快照节点前都确认父UI仍由本轮操作控制。
-                ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
-                var eachChild = children[i];
+                    // 按Hierarchy顺序启动关系调度，不等待上一个子UI动画。
+                    for (var i = 0; i < children.Count; i++)
+                    {
+                        // 每次访问快照节点前都确认父UI仍由本轮操作控制。
+                        ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
+                        var eachChild = children[i];
 
-                // 仅处理仍属于当前UI且明确配置为随父显示的直接子UI。
-                if (!IsCurrentChildForParentShow(eachChild) || !eachChild.showWithParent) continue;
+                        // 仅处理仍属于当前UI且明确配置为随父显示的直接子UI。
+                        if (!IsCurrentChildForParentShow(eachChild) || !eachChild.showWithParent) continue;
 
-                // 已初始化且已显示的节点无需重复执行；未初始化初态仍需恢复实际效果。
-                if (eachChild._isUIStateInitialized && eachChild.State is UIState.Showed) continue;
+                        // 已初始化且已显示的节点无需重复执行；未初始化初态仍需恢复实际效果。
+                        if (eachChild._isUIStateInitialized && eachChild.State is UIState.Showed) continue;
 
-                // 显式Showing请求必须继续等待当前父UI。
-                if (eachChild.State is UIState.Showing && eachChild.IsCurrentNormalShowAction()) continue;
+                        // 显式Showing请求必须继续等待当前父UI。
+                        if (eachChild.State is UIState.Showing && eachChild.IsCurrentNormalShowAction()) continue;
 
-                // 同组兄弟正在显式显示时让显式请求优先，避免链接令牌沿依赖环自取消。
-                if (HasShowingUIInSiblingGroup(children, eachChild)) continue;
+                        // 同组兄弟正在显式显示时让显式请求优先，避免默认面板取代请求来源。
+                        if (HasShowingUIInSiblingGroup(children, eachChild)) continue;
 
-                // 父级联批次先选中严格更高优先级候选，不启动注定会被抢占的低优先级异步行为。
-                if (HasHigherPriorityShowWithParentCandidate(children, eachChild, chooseLastEqual: true)) continue;
+                        // 父级联批次先选中严格更高优先级候选，不启动注定会被抢占的低优先级异步行为。
+                        if (HasHigherPriorityShowWithParentCandidate(children, eachChild, chooseLastEqual: true)) continue;
 
-                // 子UI继承父UI令牌并执行完整异步生命周期，但不再向上等待父链。
-                tasks.Add(eachChild.ShowFromParentAsync(operationCts.Token, this, operationVersion));
+                        // 子UI继承父UI令牌，同步启动关系调度，表现阶段不阻塞其他子UI。
+                        tasks.Add(eachChild.ShowFromParentAsync(operationCts.Token, this, operationVersion));
 
-                // 子UI回调可能取代当前父UI操作，继续处理下一个节点前必须再次校验。
-                ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
-            }
+                        // 子UI回调可能取代当前父UI操作，继续处理下一个节点前必须再次校验。
+                        ThrowIfCurrentShowHideActionInvalid(operationCts, operationVersion);
+                    }
                 }
                 catch (Exception exception) { schedulingException = exception; }
                 Exception presentationException = null;
@@ -1204,7 +1205,7 @@ namespace JH
                     !IsCurrentChildForParentShow(eachCandidate) ||
                     !eachCandidate.showWithParent) continue;
 
-                // 只在同互斥组内使用数值优先级，相等时保留原Hierarchy后请求获胜语义。
+                // 只比较同互斥组；异步批次预选同优先级的最后一个，避免启动后立即取消。
                 if (eachCandidate.mutexGroup == targetChild.mutexGroup &&
                     (eachCandidate.mutexPriority > targetChild.mutexPriority ||
                      chooseLastEqual && eachCandidate.mutexPriority == targetChild.mutexPriority &&
@@ -1299,7 +1300,6 @@ namespace JH
                 // 至少存在一个可变兄弟时才调整层级。
                 if (hasFlexibleSibling) transform.SetSiblingIndex(maxSiblingIndex);
             }
-
         }
 
         /// <summary>

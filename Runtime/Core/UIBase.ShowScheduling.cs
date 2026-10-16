@@ -78,15 +78,6 @@ namespace JH
             return true;
         }
 
-        /// <summary>
-        ///  判断当前UI的连续父UI链是否存在并已经全部完成显示生命周期。
-        /// </summary>
-        /// <returns>存在直接父UI且整条连续父UI链均已初始化为Showed时返回true。</returns>
-        private bool IsRequiredParentChainShowed(out UIBase blockingParent)
-        {
-            return IsContinuousParentChainShowed(true, out blockingParent);
-        }
-
         private bool IsContinuousParentChainShowed(bool requireDirectParent, out UIBase blockingParent,
             bool allowScheduledParents = false)
         {
@@ -422,6 +413,22 @@ namespace JH
 
             // 同步显示已经由新版本隐藏流程取代，旧调用栈只需停止继续执行。
             return false;
+        }
+
+        /// <summary>动画恢复只核验既有决策；新层级仍有可见竞争者时停止自己，不再调度隐藏别人。</summary>
+        private void MaintainCommittedShowRelations(List<UIBase> siblings, UIShowMode showMode,
+            int operationVersion, CancellationTokenSource operationCts)
+        {
+            MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
+            FindSiblings(siblings);
+            foreach (var sibling in siblings)
+            {
+                if (!IsCurrentSibling(sibling) || sibling.mutexGroup != mutexGroup ||
+                    !RequiresSiblingHide(sibling)) continue;
+                if (sibling.State == UIState.Hiding && sibling.IsCurrentHideAction()) continue;
+                LogShowRejection(ShowRejectionReason.CommittedMutexChanged, showMode, true, sibling);
+                StopCurrentShow(operationVersion, operationCts);
+            }
         }
 
         /// <summary>

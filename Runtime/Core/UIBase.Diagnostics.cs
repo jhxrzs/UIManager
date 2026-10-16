@@ -10,6 +10,7 @@ namespace JH
             RequiredParentNotReady,
             AutoParentNotReady,
             PreflightAncestorRejected,
+            CommittedMutexChanged,
             HigherPrioritySibling,
             CascadeSourceUnavailable,
             CascadeParentChanged,
@@ -43,6 +44,8 @@ namespace JH
                     "父级联来源不存在或已销毁。",
                 ShowRejectionReason.PreflightAncestorRejected =>
                     $"显示预演失败：必要祖先「{GetSchedulingPath(relatedPanel.transform)}」无法显示，本次请求未执行。",
+                ShowRejectionReason.CommittedMutexChanged =>
+                    $"显示关系已变化：当前同组面板「{GetSchedulingPath(relatedPanel.transform)}」仍可见，停止本次显示，不重新调度该面板。",
                 ShowRejectionReason.CascadeParentChanged =>
                     $"父级联关系已失效：来源父面板为「{GetSchedulingPath(relatedPanel.transform)}」，" +
                     $"当前直接父节点为「{GetSchedulingPath(transform.parent)}」。",
