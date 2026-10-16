@@ -488,8 +488,8 @@ namespace JH
             // 停用期间不允许TMP事件继续修改其他系统触发的文字重建结果。
             UnsubscribeTMPPreRenderText();
 
-            // IMeshModifier停用后标脏，Graphic下一次启用时会恢复自身原始网格。
-            if (graphic) graphic.SetVerticesDirty();
+            // TMP还需要属性变化标记，才能在下一次Canvas重建时恢复未变形的文字网格。
+            MarkVerticesDirty();
         }
 
         private void OnDestroy()

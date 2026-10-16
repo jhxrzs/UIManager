@@ -7,6 +7,7 @@
     "com.jh.uimanager.runtime",
     "UniTask",
     "Unity.ugui",
+    "Unity.TextMeshPro",
     "Unity.InputSystem",
     "Unity.InputSystem.TestFramework"
   ],
