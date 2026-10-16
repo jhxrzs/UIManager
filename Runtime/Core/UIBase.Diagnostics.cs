@@ -2,27 +2,22 @@ using UnityEngine;
 
 namespace JH
 {
+    /// <summary>UI面板的显示准入拒绝原因和层级诊断。</summary>
     public partial class UIBase
     {
-        private enum ShowRejectionReason
-        {
-            MissingRequiredParent,
-            RequiredParentNotReady,
-            AutoParentNotReady,
-            PreflightAncestorRejected,
-            CommittedMutexChanged,
-            HigherPrioritySibling,
-            CascadeSourceUnavailable,
-            CascadeParentChanged,
-            CascadeOperationReplaced
-        }
 
         /// <summary>仅在真实准入失败时记录一次；关闭开关时不构建日志字符串或层级路径。</summary>
+        /// <param name="reason">导致本次显示准入失败的原因。</param>
+        /// <param name="showMode">当前显示请求来自普通调用还是父级联。</param>
+        /// <param name="isRevalidation">是否在已开始的显示过程中重新检查准入。</param>
+        /// <param name="relatedPanel">与拒绝原因相关的父界面或兄弟界面，没有时为空。</param>
         private void LogShowRejection(ShowRejectionReason reason, UIShowMode showMode, bool isRevalidation,
             UIBase relatedPanel = null)
         {
+            // 诊断开关关闭时不构造日志内容。
             if (!UIOperationSettings.EnableSchedulingLogs) return;
 
+            // 按拒绝类型生成包含关联界面和准入条件的解释。
             var explanation = reason switch
             {
                 ShowRejectionReason.MissingRequiredParent =>
@@ -53,16 +48,26 @@ namespace JH
                     $"来源父面板「{GetSchedulingPath(relatedPanel.transform)}」的显示操作已被后续操作取代。",
                 _ => "显示准入条件不满足。"
             };
+            // 区分入口直接拒绝与已开始显示后的准入失效。
             var outcome = isRevalidation ? "显示操作失去准入，准备停止并收口" : "显示请求被拒绝";
+            // 标明该请求来自普通显示还是父级联。
             var source = showMode == UIShowMode.ParentCascade ? "随父显示" : "普通显示";
+            // 将原因、目标路径和请求来源写入关联当前面板的日志。
             Debug.Log($"[UIManager] 面板「{GetSchedulingPath(transform)}」{outcome}（{source}）：{explanation}", this);
         }
 
+        /// <summary>构建包含场景名的层级路径，用于定位准入诊断涉及的节点。</summary>
+        /// <param name="node">需要构建场景层级路径的节点。</param>
+        /// <returns>包含场景名的层级路径；节点不存在时返回占位说明。</returns>
         private static string GetSchedulingPath(Transform node)
         {
+            // 不存在的节点使用明确占位说明。
             if (!node) return "<不存在>";
+            // 以目标节点名称开始拼接层级路径。
             var path = node.name;
+            // 逐层添加父节点名称，形成完整 Transform 路径。
             for (var parent = node.parent; parent; parent = parent.parent) path = parent.name + "/" + path;
+            // 在层级路径前附加场景名，区分不同场景的同名节点。
             return node.gameObject.scene.name + ":/" + path;
         }
     }

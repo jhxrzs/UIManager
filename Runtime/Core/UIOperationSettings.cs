@@ -5,6 +5,7 @@ namespace JH
     /// <summary>UI 显隐调度的公共配置。</summary>
     public static class UIOperationSettings
     {
+        /// <summary>新根请求采用的同一面板同种行为默认执行次数上限。</summary>
         private static int _maxExecutionsPerBehavior = 10;
 
         /// <summary>
@@ -22,7 +23,9 @@ namespace JH
             get => _maxExecutionsPerBehavior;
             set
             {
+                // 拒绝非正执行次数，避免循环保护配置失去意义。
                 if (value <= 0) throw new ArgumentOutOfRangeException(nameof(value), "执行次数上限必须大于0。");
+                // 保存供后续新根请求使用的执行次数上限。
                 _maxExecutionsPerBehavior = value;
             }
         }

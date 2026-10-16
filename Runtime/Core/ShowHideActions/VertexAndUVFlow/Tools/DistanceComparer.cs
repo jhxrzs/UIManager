@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace JH
 {
+    /// <summary>提供流动组按世界距离排列成员的私有比较器。</summary>
     public partial class UIFlowGroupController
     {
         /// <summary>
@@ -36,6 +37,7 @@ namespace JH
                 {
                     // 保存成功解析的正式世界坐标。
                     _endPointWorld = endPointWorld;
+                    // 投影成功后结束构造，不使用降级终点。
                     return;
                 }
 
@@ -65,10 +67,12 @@ namespace JH
 
                 // 两个候选都使用同一世界终点计算直线距离。
                 var xDistance = Vector3.Distance(x.transform.position, _endPointWorld);
+                // 右侧候选使用同一世界终点计算距离。
                 var yDistance = Vector3.Distance(y.transform.position, _endPointWorld);
 
                 // 优先按照实际距离从近到远排序。
                 var distanceComparison = xDistance.CompareTo(yDistance);
+                // 距离不同时直接采用距离比较结果。
                 if (distanceComparison != 0) return distanceComparison;
 
                 // 相同距离使用Unity实体编号稳定打破平局，List.Sort不会在帧间随机交换顺序。

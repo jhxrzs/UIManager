@@ -161,6 +161,7 @@ namespace JH
         /// </summary>
         protected override void Awake()
         {
+            // 先完成 MaskableGraphic 自身的渲染与遮罩初始化。
             base.Awake();
 
             // 转移动效仅负责视觉表现，禁止透明Ribbon阻挡任何UI射线。
@@ -175,6 +176,7 @@ namespace JH
         /// </summary>
         protected override void OnEnable()
         {
+            // 恢复 Graphic 的启用流程，再恢复 Ribbon 缓冲区与标记。
             base.OnEnable();
 
             // 脚本重载可能清空非序列化数组，启用入口负责按固定容量恢复。
@@ -190,18 +192,28 @@ namespace JH
         /// </summary>
         protected override void OnValidate()
         {
+            // 保留基类编辑器校验和网格更新行为。
             base.OnValidate();
 
             // 全部序列化外观值统一限制在运行时公式可以稳定处理的范围内。
             maximumTrailLength = Mathf.Max(0f, maximumTrailLength);
+            // 限制拖尾占整条路径的比例，避免尾部覆盖过长路径。
             maximumTrailFraction = Mathf.Clamp(maximumTrailFraction, 0f, 0.5f);
+            // 把相对源图形的宽度比例限制为零到一。
             widthRatio = Mathf.Clamp01(widthRatio);
+            // 拖尾半宽绝对上限不能为负。
             maximumHalfWidth = Mathf.Max(0f, maximumHalfWidth);
+            // 将额外透明度限制到有效范围。
             opacity = Mathf.Clamp01(opacity);
+            // 限制沿拖尾的宽度衰减指数，避免极端尖锐截面。
             widthPower = Mathf.Clamp(widthPower, 0.1f, 4f);
+            // 限制沿拖尾的透明度衰减指数。
             alphaPower = Mathf.Clamp(alphaPower, 0.1f, 4f);
+            // 内部软边通道必须位于半宽范围内。
             innerLaneRatio = Mathf.Clamp01(innerLaneRatio);
+            // 曲率安全系数保持正值且小于一，避免法线偏移翻面。
             curvatureSafety = Mathf.Clamp(curvatureSafety, 0.05f, 0.95f);
+            // 拖尾仅用于表现，不阻挡 UI 射线交互。
             raycastTarget = false;
 
             // 编辑器修改参数后让Canvas在下一次重建时立即反映新的拖尾轮廓。
@@ -226,9 +238,13 @@ namespace JH
         {
             // 公共入口使用与OnValidate相同的边界，动态创建组件和Prefab拥有一致语义。
             maximumTrailLength = Mathf.Max(0f, newMaximumTrailLength);
+            // 按同一安全范围保存新的相对拖尾长度上限。
             maximumTrailFraction = Mathf.Clamp(newMaximumTrailFraction, 0f, 0.5f);
+            // 保存规范化后的宽度比例。
             widthRatio = Mathf.Clamp01(newWidthRatio);
+            // 保存非负的绝对半宽上限。
             maximumHalfWidth = Mathf.Max(0f, newMaximumHalfWidth);
+            // 保存规范化后的透明度系数。
             opacity = Mathf.Clamp01(newOpacity);
 
             // 风格变化只影响顶点位置和颜色，不需要创建或修改任何材质实例。
@@ -253,9 +269,13 @@ namespace JH
 
             // 全部流动状态使用值类型复制，不持有调用方的临时对象或委托。
             flowPath = path;
+            // 限制已缓动的进度，避免沿弧长采样越过路径端点。
             flowProgress = Mathf.Clamp01(easedProgress);
+            // 源图形横向半径不能为负。
             sourceTransverseRadius = Mathf.Max(0f, sourceRadius);
+            // 缓存主体颜色，让拖尾与来源保持一致。
             flowColor = color;
+            // 标记当前存在可供网格生成使用的流动状态。
             hasFlow = true;
 
             // 动态目标每帧可能改变控制点，累计弧长表必须与本帧同一条路径一起重建。
@@ -272,7 +292,9 @@ namespace JH
         {
             // 清空所有权后迟到的Canvas重建只能得到空网格。
             hasFlow = false;
+            // 清除旧动画进度，避免下次显示沿用末帧。
             flowProgress = 0f;
+            // 清除旧路径弧长缓存对应的有效总长。
             totalArcLength = 0f;
 
             // 已经分配的弧长数组继续保留给下一次池化播放复用。
@@ -294,10 +316,12 @@ namespace JH
                 flowProgress >= 1f - MinimumFlowValue ||
                 totalArcLength <= MinimumFlowValue ||
                 sourceTransverseRadius <= MinimumFlowValue)
+                // 无有效流动、进度或弧长时保持空网格。
                 return;
 
             // 四次对称生命周期包络在零和一处同时拥有零值与零一阶导数。
             var lifecycle = EvaluateLifecycle(flowProgress);
+            // 首尾包络接近零时省略几乎不可见的拖尾。
             if (lifecycle <= MinimumFlowValue) return;
 
             // 头部弧长严格对应刚性主体当前路径参数，Ribbon只向已经经过的路径后方展开。
@@ -309,9 +333,11 @@ namespace JH
             var configuredTrailLength = Mathf.Min(
                 maximumTrailLength,
                 totalArcLength * maximumTrailFraction);
+            // 在绝对长度、路径比例和已前进距离之间取有效拖尾长度。
             var activeTrailLength = Mathf.Min(
                 configuredTrailLength * lifecycle,
                 headArcLength);
+            // 有效长度接近零时无法生成有面积的 Ribbon。
             if (activeTrailLength <= MinimumFlowValue) return;
 
             // 当前帧基础宽度使用统一生命周期收放，源图形本身始终由独立刚性Image保持完整。
@@ -319,11 +345,14 @@ namespace JH
                                     sourceTransverseRadius * widthRatio,
                                     maximumHalfWidth) *
                                 lifecycle;
+            // 基础半宽接近零时无需构建不可见三角形。
             if (baseHalfWidth <= MinimumFlowValue) return;
 
             // Graphic颜色与业务颜色只计算一次，随后每个通道仅修改自身Alpha。
             var combinedColor = color * flowColor;
+            // 初始化相邻站点法线连续性检查的缓存。
             var previousNormal = Vector2.zero;
+            // 首站点没有前一法线，不执行方向校正。
             var hasPreviousNormal = false;
 
             // 先按头到尾顺序写入全部站点的四条横向软边通道。
@@ -331,33 +360,43 @@ namespace JH
                  stationIndex < RibbonStationCount;
                  stationIndex++)
             {
+                // 把固定站点索引映射为从头部到尾部的比例。
                 var stationRatio = stationIndex / (float)(RibbonStationCount - 1);
 
                 // 使用累计弧长反查参数，弯曲段和近直线段都保持稳定的空间采样密度。
                 var stationArcLength = headArcLength -
                                        stationRatio * activeTrailLength;
+                // 通过累计弧长表把当前站点距离反查为路径参数。
                 var stationProgress = flowPath.GetParameterAtLength(
                     stationArcLength,
                     cumulativeArcLengths);
+                // 按反查参数采样位置、法线与曲率。
                 var pose = flowPath.Evaluate(stationProgress);
+                // 以路径采样法线作为当前横截面的初始方向。
                 var stationNormal = pose.Normal;
 
                 // 理论连续法线在数值退化点仍可能反号，逐站校正保证Ribbon横截面不翻转。
                 if (hasPreviousNormal && Vector2.Dot(stationNormal, previousNormal) < 0f)
+                    // 相邻法线反向时翻转当前方向，避免横截面扭转。
                     stationNormal = -stationNormal;
+                // 保存已经校正的法线供下一站点比较。
                 previousNormal = stationNormal;
+                // 后续站点可以开始使用法线连续性检查。
                 hasPreviousNormal = true;
 
                 // 标准SmoothStep轮廓让宽度在尾端以零斜率收束，再由幂指数控制饱满程度。
                 var smoothStationRatio = stationRatio * stationRatio *
                                          (3f - 2f * stationRatio);
+                // 根据站点比例计算从主体头部逐渐收束到尾部的宽度轮廓。
                 var widthProfile = Mathf.Pow(
                     Mathf.Max(0f, 1f - smoothStationRatio),
                     widthPower);
+                // 将宽度轮廓作用于当前基础半宽。
                 var stationHalfWidth = baseHalfWidth * widthProfile;
 
                 // 法线偏移必须小于局部曲率半径，安全系数防止两侧边缘形成尖点或翻面。
                 if (pose.Curvature > MinimumFlowValue)
+                    // 按局部曲率限制站点半宽，避免内侧法线偏移相交。
                     stationHalfWidth = Mathf.Min(
                         stationHalfWidth,
                         curvatureSafety / pose.Curvature);
@@ -366,24 +405,32 @@ namespace JH
                 var alphaProfile = Mathf.Pow(
                     Mathf.Max(0f, 1f - stationRatio),
                     alphaPower);
+                // 叠加源颜色、样式透明度、生命周期与纵向尾部衰减。
                 var stationAlpha = combinedColor.a * opacity *
                                    lifecycle * alphaProfile;
 
                 // 四条横向通道分别写入外透明边、两条实体内边和另一侧透明边。
                 for (var laneIndex = 0; laneIndex < RibbonLaneCount; laneIndex++)
                 {
+                    // 取得当前横向通道相对于半宽的偏移比例。
                     var laneOffset = GetLaneOffset(laneIndex);
+                    // 取得当前通道用于线性软边的透明度比例。
                     var laneAlpha = GetLaneAlpha(laneIndex);
+                    // 沿站点法线偏移，得到该通道的二维顶点位置。
                     var lanePosition = pose.Position +
                                        stationNormal *
                                        (stationHalfWidth * laneOffset);
 
+                    // 从 Unity 默认 UI 顶点初始化完整通道。
                     var vertex = UIVertex.simpleVert;
+                    // 将 Ribbon 平面位置写入本地坐标，深度保持为零。
                     vertex.position = new Vector3(lanePosition.x, lanePosition.y, 0f);
 
                     // RGB保持整条Ribbon一致，Alpha由纵向包络与横向软边共同决定。
                     var vertexColor = combinedColor;
+                    // 把站点透明度乘以通道软边比例。
                     vertexColor.a = stationAlpha * laneAlpha;
+                    // 写入保留 RGB、已衰减 Alpha 的顶点颜色。
                     vertex.color = vertexColor;
 
                     // UV保存头尾比例和横向通道比例，未来共享Shader可以直接复用而无需改网格API。
@@ -392,6 +439,7 @@ namespace JH
                         laneIndex / (float)(RibbonLaneCount - 1),
                         0f,
                         0f);
+                    // 追加当前站点通道顶点供后续拓扑连接。
                     vertexHelper.AddVert(vertex);
                 }
             }
@@ -401,16 +449,23 @@ namespace JH
                  stationIndex < RibbonStationCount - 1;
                  stationIndex++)
             {
+                // 逐一连接相邻横向通道形成细分条带。
                 for (var laneIndex = 0;
                      laneIndex < RibbonLaneCount - 1;
                      laneIndex++)
                 {
+                    // 计算当前站点左侧通道顶点索引。
                     var currentLeft = stationIndex * RibbonLaneCount + laneIndex;
+                    // 当前站点右侧顶点紧邻左侧通道。
                     var currentRight = currentLeft + 1;
+                    // 下一站点左侧顶点与当前站点相隔一个通道组。
                     var nextLeft = currentLeft + RibbonLaneCount;
+                    // 下一站点右侧顶点紧邻其左侧通道。
                     var nextRight = nextLeft + 1;
 
+                    // 添加条带单元的第一个三角形。
                     vertexHelper.AddTriangle(currentLeft, nextLeft, nextRight);
+                    // 添加条带单元的第二个三角形，保持连续面拓扑。
                     vertexHelper.AddTriangle(currentLeft, nextRight, currentRight);
                 }
             }
@@ -419,8 +474,11 @@ namespace JH
         /// <summary>
         ///  返回指定横向通道相对于当前Ribbon半宽的位置比例。
         /// </summary>
+        /// <param name="laneIndex">从零开始的 Ribbon 横向通道索引。</param>
+        /// <returns>相对站点半宽的有符号横向偏移比例。</returns>
         private float GetLaneOffset(int laneIndex)
         {
+            // 外侧通道位于正负半宽，内部通道按软边比例向内收缩。
             return laneIndex switch
             {
                 0 => 1f,
@@ -433,6 +491,8 @@ namespace JH
         /// <summary>
         ///  返回指定横向通道用于生成线性软边的Alpha比例。
         /// </summary>
+        /// <param name="laneIndex">从零开始的 Ribbon 横向通道索引。</param>
+        /// <returns>外侧通道返回零，内部通道返回一。</returns>
         private static float GetLaneAlpha(int laneIndex)
         {
             // 两条外轮廓完全透明，两条内部通道完整保留当前站点Alpha。
@@ -442,10 +502,15 @@ namespace JH
         /// <summary>
         ///  计算首尾值和一阶导都为零、动画中点为一的对称生命周期包络。
         /// </summary>
+        /// <param name="progress">将在求包络前限制为零到一的生命周期进度。</param>
+        /// <returns>首尾为零、中点为一的对称透明度包络。</returns>
         private static float EvaluateLifecycle(float progress)
         {
+            // 先把生命周期进度限制到闭区间。
             var clampedProgress = Mathf.Clamp01(progress);
+            // 计算终点侧的对称时间补量。
             var inverseProgress = 1f - clampedProgress;
+            // 对称四次包络在首尾为零、中点为一，且端点速度平滑。
             return 16f * clampedProgress * clampedProgress *
                    inverseProgress * inverseProgress;
         }
@@ -455,10 +520,13 @@ namespace JH
         /// </summary>
         private void EnsureArcLengthBuffer()
         {
+            // 已有缓冲区容量正确时直接复用。
             if (cumulativeArcLengths != null &&
                 cumulativeArcLengths.Length == ArcLengthTableSize)
+                // 固定容量缓冲区已经准备好，无需再次分配。
                 return;
 
+            // 仅容量缺失或不匹配时创建新的累计弧长表。
             cumulativeArcLengths = new float[ArcLengthTableSize];
         }
     }

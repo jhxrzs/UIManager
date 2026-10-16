@@ -135,6 +135,7 @@ namespace JH
             get => endScreenPoint;
             set
             {
+                // 保存新的屏幕终点，随后用当前进度重建整组路径。
                 endScreenPoint = value;
 
                 // 终点变化会改变整组唯一主路径，必须以当前进度重新下发到全部子物体。
@@ -172,10 +173,15 @@ namespace JH
         private readonly List<UIFlowMeshEffect> sortedFlowMeshEffects = new();
 
         // Graphic标脏回调可以同步创建或启用成员；先记录请求，避免重入改写正在遍历的列表。
+        /// <summary>是否正在消费成员快照，重入请求需等待本轮结束。</summary>
         private bool isUpdatingGroupFlow;
+        /// <summary>是否有尚未处理的完整层级扫描请求。</summary>
         private bool hierarchyRefreshPending;
+        /// <summary>是否有尚未下发的组进度请求。</summary>
         private bool flowUpdatePending;
+        /// <summary>是否已进入销毁清理，禁止回调重新登记或下发状态。</summary>
         private bool isDestroying;
+        /// <summary>重入期间最后请求的零到一线性组进度。</summary>
         private float pendingLinearProgress;
 
         /// <summary>
@@ -206,17 +212,21 @@ namespace JH
         {
             // 完整扫描只发生在成员或层级变化时；重入期间留到当前遍历结束后处理。
             hierarchyRefreshPending = true;
+            // 通过统一更新入口处理扫描请求，重入时自动延后。
             ApplyGroupFlow(effectAmount);
         }
 
         /// <summary>
         ///  新启用或换父的成员主动加入最近的控制器，并立即取得当前显隐状态。
         /// </summary>
+        /// <param name="member">新启用或刚换父、需要核对直属归属的流动网格。</param>
         internal void RegisterFlowMeshEffect(UIFlowMeshEffect member)
         {
+            // 销毁中、停用或不属于当前最近控制器的成员不能登记。
             if (isDestroying || !isActiveAndEnabled || !IsOwnedFlowMeshEffect(member)) return;
             // 启用整组时扫描可能已经包含当前成员，不重复扫描或触发标脏回调。
             if (flowMeshEffects.Contains(member)) return;
+            // 缓存尚未包含该成员时请求一次完整层级刷新。
             RefreshFlowHierarchy();
         }
 
@@ -255,6 +265,7 @@ namespace JH
         /// <param name="value">基类限制到零到一范围后的线性进度。</param>
         protected override void OnEffectAmountChanged(float value)
         {
+            // 保留基类进度通知，再下发组路径与成员进度。
             base.OnEffectAmountChanged(value);
             // 所有时间、路径和网格参数通过唯一入口一起下发，禁止不同回调形成半更新状态。
             ApplyGroupFlow(value);
@@ -336,6 +347,7 @@ namespace JH
             {
                 // 缓存仍符合最近Controller归属时继续保留。
                 var flowMeshEffect = flowMeshEffects[index];
+                // 仍由本组直接管理的成员保留在当前缓存中。
                 if (IsOwnedFlowMeshEffect(flowMeshEffect)) continue;
 
                 // 先移除缓存，清理网格时的同步回调不能让旧Controller再次消费该成员。
@@ -343,6 +355,7 @@ namespace JH
 
                 // 只释放仍由当前Controller登记的旧状态，后来Controller的新状态不受影响。
                 ReleaseUnownedFlowMeshEffect(flowMeshEffect);
+                // 释放回调若销毁本控制器，立即结束旧缓存遍历。
                 if (isDestroying || !this) return;
             }
         }
@@ -367,6 +380,7 @@ namespace JH
         {
             // 复用排序列表暂存旧成员，刷新完成前仍可准确解除已经离组的临时状态。
             sortedFlowMeshEffects.Clear();
+            // 保存旧成员快照，供扫描后释放已离组状态。
             sortedFlowMeshEffects.AddRange(flowMeshEffects);
 
             // 清除活动缓存但保留容量，随后按当前稳定层级顺序完整重建。
@@ -393,6 +407,7 @@ namespace JH
             {
                 // 已销毁成员不再访问Unity对象。
                 var previousFlowMeshEffect = sortedFlowMeshEffects[index];
+                // 旧快照中的组件已被销毁时不再访问其原生对象。
                 if (!previousFlowMeshEffect) continue;
 
                 // 仍在新集合中的成员继续由当前Controller负责。
@@ -400,6 +415,7 @@ namespace JH
 
                 // 离组成员只释放当前Controller旧状态，后来Controller的新状态不会被覆盖。
                 ReleaseUnownedFlowMeshEffect(previousFlowMeshEffect);
+                // 离组回调若销毁本组，不继续操作组内复用列表。
                 if (isDestroying || !this) return;
             }
 
@@ -413,45 +429,67 @@ namespace JH
         /// <param name="linearProgress">Controller当前零到一线性进度。</param>
         private void ApplyGroupFlow(float linearProgress)
         {
+            // 销毁开始后忽略任何迟到的进度请求。
             if (isDestroying || !this) return;
+            // 重入时仅保留最后请求的线性进度。
             pendingLinearProgress = linearProgress;
+            // 记录仍有一轮进度需要下发。
             flowUpdatePending = true;
+            // 已有遍历正在进行时不重建其正在使用的集合。
             if (isUpdatingGroupFlow) return;
 
+            // 进入更新临界区，后续重入请求只登记待处理标记。
             isUpdatingGroupFlow = true;
+            // 无论下发正常结束或业务回调失败，都释放更新标记。
             try
             {
+                // 组件仍存活时持续消费回调期间新登记的请求。
                 while (!isDestroying && this && (flowUpdatePending || hierarchyRefreshPending))
                 {
+                    // 捕获本轮是否需要完整扫描层级。
                     var refreshHierarchy = hierarchyRefreshPending;
+                    // 捕获本轮应下发的最后请求进度。
                     var progress = pendingLinearProgress;
+                    // 清除已消费的扫描标记，让回调可以登记下一轮请求。
                     hierarchyRefreshPending = false;
+                    // 清除已消费的进度标记，区分本轮内的新请求。
                     flowUpdatePending = false;
+                    // 仅层级变化时执行全量扫描和共享材质同步。
                     if (refreshHierarchy)
                     {
+                        // 重建直属成员缓存并释放已经离组的旧状态。
                         RefreshOwnedFlowMeshEffects();
+                        // 扫描中的清理回调若销毁控制器，停止后续材质更新。
                         if (isDestroying || !this) return;
+                        // 为当前直属成员同步可选共享材质。
                         SetMaterialPrefab();
+                        // 材质回调若销毁控制器，停止本轮路径下发。
                         if (isDestroying || !this) return;
                     }
 
+                    // 使用本轮捕获的进度更新仍有效的成员。
                     ApplyGroupFlowCore(progress);
                 }
             }
             finally
             {
+                // 退出更新临界区，使之后的请求可以立即处理。
                 isUpdatingGroupFlow = false;
             }
         }
 
+        /// <summary>校正成员归属并向当前有效成员下发统一路径与错峰进度。</summary>
+        /// <param name="linearProgress">尚未附加成员错峰的零到一线性组进度。</param>
         private void ApplyGroupFlowCore(float linearProgress)
         {
+            // 控制器已销毁时不访问相机、层级或成员缓存。
             if (isDestroying || !this) return;
             // Canvas相机和Camera.main可能在动画期间更换，组路径与子网格必须读取同一规则。
             RefreshUICamera();
 
             // 每次消费缓存前执行无分配所有权校验，覆盖禁用组件错过层级回调的极端情况。
             PruneUnownedFlowMeshEffects();
+            // 移除旧成员的回调可能销毁本组，再次检查后才排序。
             if (isDestroying || !this) return;
 
             // 排序只影响可选时间错峰，所有子物体仍然采样同一条空间主路径。
@@ -506,12 +544,15 @@ namespace JH
                 // 有效组路径一次写入路径、配置和进度，只触发一次子网格重建。
                 if (hasGroupPath)
                 {
+                    // 统一路径有效时一次写入路径、配置和该成员的错峰进度。
                     flowMeshEffect.ApplyGroupFlow(
                         this,
                         groupScreenPath,
                         configuration,
                         childProgress);
+                    // 成员标脏回调若移除本组，停止旧快照下发。
                     if (isDestroying || !this) return;
+                    // 已使用统一路径，不再对该成员执行独立路径降级。
                     continue;
                 }
 
@@ -520,6 +561,7 @@ namespace JH
                     this,
                     endScreenPoint,
                     childProgress);
+                // 降级路径标脏回调同样可能销毁本组，及时结束遍历。
                 if (isDestroying || !this) return;
             }
         }
@@ -590,6 +632,7 @@ namespace JH
             // 组路径需要至少一个有效子物体和一个UI坐标空间。
             if (flowMeshEffects == null || flowMeshEffects.Count == 0 ||
                 !(transform is RectTransform controllerRectTransform))
+                // 缺少成员或矩形坐标空间时交给调用方使用降级路径。
                 return false;
 
             // 累加所有Graphic视觉中心在Controller本地空间中的位置。
@@ -603,6 +646,7 @@ namespace JH
             {
                 // 缓存候选组件并跳过已经失效的Unity对象。
                 var flowMeshEffect = flowMeshEffects[index];
+                // 已销毁候选不参与视觉中心求和与计数。
                 if (!flowMeshEffect) continue;
 
                 // 取得Graphic矩形中心的世界坐标，而不是可能偏离视觉中心的Transform Pivot。
@@ -631,6 +675,7 @@ namespace JH
                     endScreenPoint,
                     uiCamera,
                     out var targetPointLocal))
+                // 屏幕终点无法命中控制器平面时放弃本轮统一路径。
                 return false;
 
             // 统一S曲线只在Controller空间创建一次，所有子物体共享同一法线和控制点。
@@ -679,6 +724,7 @@ namespace JH
         /// </summary>
         private void RefreshUICamera()
         {
+            // 按当前父级 Canvas 的渲染模式解析坐标转换相机。
             uiCamera = UIFlowCanvasCamera.Resolve(GetComponentInParent<Canvas>());
         }
 
@@ -688,10 +734,14 @@ namespace JH
         private void FindShaderByNameOnValidate()
         {
 #if UNITY_EDITOR
+            // 用户已配置材质时不执行默认资源查找。
             if (materialPrefab != null) return;
+            // 只在 Packages 中搜索材质资产，避免从其他目录猜选资源。
             var find = AssetDatabase.FindAssets("t:Material", new[] { "Packages" });
+            // 将资源 GUID 转为路径，并匹配唯一约定的默认材质文件名。
             var first = find.Select(AssetDatabase.GUIDToAssetPath)
                 .FirstOrDefault(path => path.EndsWith(DefaultMaterialName));
+            // 找到资源后保存共享资产引用，不创建运行时材质副本。
             if (first != null) materialPrefab = AssetDatabase.LoadAssetAtPath<Material>(first);
 #endif
         }
@@ -743,21 +793,29 @@ namespace JH
         /// </summary>
         protected override void OnDestroy()
         {
+            // 先标记销毁，使同步回调无法重新登记组状态。
             isDestroying = true;
+            // 撤销尚未下发的进度请求。
             flowUpdatePending = false;
+            // 撤销尚未执行的层级扫描请求。
             hierarchyRefreshPending = false;
+            // 清理成员期间发生异常也必须进入基类解绑流程。
             try
             {
                 // 销毁可能重入材质、进度或离组清理的遍历，不能重建正在被消费的缓存。
                 var membersToDetach = new HashSet<UIFlowMeshEffect>(flowMeshEffects);
+                // 合并排序快照，覆盖重入时尚未保留在活动缓存中的成员。
                 membersToDetach.UnionWith(sortedFlowMeshEffects);
 
                 // 禁用期间层级仍可能变化，用独立快照补齐尚未进入缓存的直属成员。
                 foreach (var candidate in GetComponentsInChildren<UIFlowMeshEffect>(true))
+                    // 只补入最近控制器仍为本组的层级候选。
                     if (IsOwnedFlowMeshEffect(candidate)) membersToDetach.Add(candidate);
 
+                // 消费独立快照，允许清理回调改变原缓存和实际层级。
                 foreach (var member in membersToDetach)
                 {
+                    // 逐成员隔离业务异常，避免一个标脏回调阻止其余成员恢复。
                     try
                     {
                         // 前一个清理回调可销毁或迁移后续成员；成员内部的所有者检查保护新组。
@@ -799,6 +857,7 @@ namespace JH
             // 设置可读名称，用户可以在Unity撤销历史中识别本次批量操作。
             Undo.SetCurrentGroupName(undoName);
 
+            // 自动配置结束或失败时都合并为一个可撤销的编辑器操作。
             try
             {
                 // 控制器没有材质时才执行默认资源查询，保留用户已经指定的材质。
@@ -927,14 +986,23 @@ namespace JH
 
             // 通过配置构造函数集中限制所有形变参数，再把安全值同步回Inspector字段。
             var configuration = CreateFlowConfiguration();
+            // 把配置规范化后的横向细分段数写回编辑器字段。
             horizontalSegments = configuration.HorizontalSegments;
+            // 把规范化后的纵向细分段数写回编辑器字段。
             verticalSegments = configuration.VerticalSegments;
+            // 保存受安全范围约束的空间相位延迟。
             flowDelay = configuration.FlowDelay;
+            // 保存不会让控制点越过路径中点的纵向比例。
             curveControlDistanceRatio = configuration.CurveControlDistanceRatio;
+            // 保存规范化后的曲线弯曲比例。
             curveBend = configuration.CurveBend;
+            // 保存非负的曲线弯曲绝对上限。
             maximumCurveBend = configuration.MaximumCurveBend;
+            // 保存限制后的横向收束幂指数。
             funnelPower = configuration.FunnelPower;
+            // 保存有效的末段透明度起点。
             fadeStart = configuration.FadeStart;
+            // 保存有效的队形偏移收束幂指数。
             formationCollapsePower = configuration.FormationCollapsePower;
 
             // Prefab编辑阶段可能没有Canvas，统一相机入口会安全使用Overlay空相机语义。

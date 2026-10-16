@@ -21,7 +21,7 @@ namespace JH
     [RequireComponent(typeof(Graphic))]
     [MovedFrom(true, sourceNamespace: "JH", sourceAssembly: "com.jh.uimanager.runtime",
         sourceClassName: "VertexUVFlow")]
-    public class UIFlowMeshEffect : MonoBehaviour, IMeshModifier
+    public partial class UIFlowMeshEffect : MonoBehaviour, IMeshModifier
     {
         /// <summary>
         ///  普通Image默认的横向细分段数。
@@ -184,9 +184,11 @@ namespace JH
         private Material installedSharedFlowMaterial;
 
         // 材质赋值会同步触发Graphic回调；新更新或销毁必须使旧调用失效。
+        /// <summary>共享材质更新的递增版本，用于识别同步回调中启动的新更新。</summary>
         [NonSerialized]
         private int materialUpdateVersion;
 
+        /// <summary>是否已进入销毁清理，禁止回调重新登记或下发状态。</summary>
         [NonSerialized]
         private bool isDestroying;
 
@@ -235,13 +237,17 @@ namespace JH
         /// <param name="sharedMaterial">默认Graphic可以共同使用的流动材质；为空时使用CPU降级路径。</param>
         internal void ApplySharedMaterial(Material sharedMaterial)
         {
+            // 销毁开始后不再更新模板或访问 Graphic。
             if (isDestroying || !this) return;
+            // 为本轮材质替换分配版本，识别同步回调中启动的新更新。
             var updateVersion = ++materialUpdateVersion;
+            // 先保存本轮模板，后续初始化与 Shader 能力判断读取同一配置。
             materialPrefab = sharedMaterial;
 
             // 仅处理本组件主动安装的旧共享材质，用户后来替换的自定义材质绝不能恢复。
             if (installedSharedFlowMaterial && installedSharedFlowMaterial != sharedMaterial)
             {
+                // 暂存本组件此前安装的共享材质，供精确比较与恢复。
                 var previousMaterial = installedSharedFlowMaterial;
                 // 先撤销旧安装关系，清理回调中的新更新才能独立登记自己的材质。
                 installedSharedFlowMaterial = null;
@@ -251,6 +257,7 @@ namespace JH
                 {
                     // setter同时触发材质标脏；回调可能换组、重入更新或销毁本组件。
                     graphic.material = null;
+                    // 清理回调已换组或销毁组件时终止旧替换流程。
                     if (!IsCurrentMaterialUpdate(updateVersion)) return;
                 }
             }
@@ -270,14 +277,19 @@ namespace JH
 
             // 按Graphic当前材质重新选择自定义材质保留或共享材质安装路径。
             InitializeSharedFlowMaterial(updateVersion);
+            // 安装回调已启动新更新时不再发送旧调用的网格刷新。
             if (!IsCurrentMaterialUpdate(updateVersion)) return;
 
             // 材质能力变化后立即重新生成顶点进度或顶点Alpha路径。
             MarkVerticesDirty();
         }
 
+        /// <summary>判断材质调用是否仍属于存活组件的最新更新。</summary>
+        /// <param name="updateVersion">本次材质调用开始时捕获的更新版本。</param>
+        /// <returns>组件仍存活且尚无更新调用取代本次调用时为真。</returns>
         private bool IsCurrentMaterialUpdate(int updateVersion)
         {
+            // 仅存活组件的最新版本可以继续修改材质相关状态。
             return !isDestroying && this && materialUpdateVersion == updateVersion;
         }
 
@@ -363,7 +375,9 @@ namespace JH
 
             // 旧组路径和配置不能继续参与离组后的网格重建。
             hasGroupFlowPath = false;
+            // 清除已不属于当前成员的组路径快照。
             groupFlowPathScreen = default;
+            // 清除旧组参数，使独立模式重新读取自身配置。
             groupConfiguration = default;
 
             // 离开旧面板的Graphic必须完整显示，不能继承隐藏动画的中间帧或末帧。
@@ -469,6 +483,7 @@ namespace JH
                 standaloneFormationCollapsePower);
         }
 
+        /// <summary>初始化渲染引用、共享材质和 TMP 订阅并请求首帧网格。</summary>
         private void Awake()
         {
             // 运行时动态创建和旧Prefab都从同一入口补全必要引用。
@@ -476,6 +491,7 @@ namespace JH
 
             // 仅在Graphic没有自定义材质时安装共享流动材质，保留原有特殊Shader效果。
             InitializeSharedFlowMaterial(++materialUpdateVersion);
+            // 初始化材质期间的回调若已销毁组件，不继续订阅或标脏。
             if (isDestroying || !this) return;
 
             // Unity 6的TMP不经过Graphic网格修改器，必须使用其正式渲染前事件修改全部材质网格。
@@ -485,6 +501,7 @@ namespace JH
             MarkVerticesDirty();
         }
 
+        /// <summary>启用时恢复渲染引用与订阅，并同步最近流动组状态。</summary>
         private void OnEnable()
         {
             // 组件重新启用或池化图标激活时重新解析可能变化的Canvas层级。
@@ -500,6 +517,7 @@ namespace JH
             MarkVerticesDirty();
         }
 
+        /// <summary>停用时解除 TMP 订阅并请求恢复未变形网格。</summary>
         private void OnDisable()
         {
             // 停用期间不允许TMP事件继续修改其他系统触发的文字重建结果。
@@ -509,10 +527,14 @@ namespace JH
             MarkVerticesDirty();
         }
 
+        /// <summary>撤销材质更新和 TMP 订阅，只恢复本组件仍持有的共享材质。</summary>
         private void OnDestroy()
         {
+            // 先阻止重入更新，避免清理回调重新安装材质。
             isDestroying = true;
+            // 使所有尚未返回的旧材质更新版本失效。
             ++materialUpdateVersion;
+            // 暂存拥有的共享材质，用于仅恢复本组件仍持有的材质槽。
             var previousMaterial = installedSharedFlowMaterial;
             // 恢复材质也会触发回调；销毁期间不允许迟到调用重新登记所有权。
             installedSharedFlowMaterial = null;
@@ -528,53 +550,71 @@ namespace JH
             }
         }
 
+        /// <summary>Canvas 层级变化后刷新相机、流动组与网格。</summary>
         private void OnCanvasHierarchyChanged()
         {
             // 工具影子运行时会换到嵌套排序Canvas，必须按新的rootCanvas重新取相机。
             RefreshUICamera();
 
+            // Canvas 层级变化后重新核对最近的组控制器。
             SynchronizeGroupController();
 
             // 新Canvas拥有独立的Graphic重建时机，立即标脏以提交正确坐标曲面。
             MarkVerticesDirty();
         }
 
+        /// <summary>换父后重新解析渲染上下文并同步流动组归属。</summary>
         private void OnTransformParentChanged()
         {
             // 换父后Graphic引用不变，但Canvas和相机语义可能已经完全不同。
             InitializeReferences();
 
+            // 换父后释放旧组并登记新组的当前状态。
             SynchronizeGroupController();
 
             // 新父节点下重新生成屏幕终点对应的本地网格。
             MarkVerticesDirty();
         }
 
+        /// <summary>释放旧流动组状态，并向最近且可接收成员的控制器登记。</summary>
         private void SynchronizeGroupController()
         {
+            // 销毁清理期间不查询层级或重新登记组状态。
             if (isDestroying || !this) return;
             // GetComponentInParent包含自身，Controller与Graphic位于同一节点时也能登记。
             var currentController = GetComponentInParent<UIFlowGroupController>(true);
+            // 最近控制器发生变化时先解除仍登记的旧组。
             if (groupController && groupController != currentController)
+                // 恢复独立可见状态并清除旧路径与参数。
                 DetachGroupController(groupController);
+            // 释放旧组的同步标脏回调可能销毁本组件，再次检查后才登记。
             if (isDestroying || !this) return;
             // 停用的效果保留Graphic原貌；对象或组件重新启用时再取得当时的组状态。
             if (isActiveAndEnabled && currentController)
+                // 向最近控制器请求登记，由控制器核对启用状态与实际归属。
                 currentController.RegisterFlowMeshEffect(this);
         }
 
+        /// <summary>限制编辑器配置范围并刷新引用与网格预览。</summary>
         private void OnValidate()
         {
             // 编辑器输入统一限制在实现可承受的网格范围内。
             horizontalSegments = Mathf.Clamp(
                 horizontalSegments, MinimumGridSegments, MaximumGridSegments);
+            // 把纵向细分段数限制在统一网格配置的安全范围内。
             verticalSegments = Mathf.Clamp(
                 verticalSegments, MinimumGridSegments, MaximumGridSegments);
+            // 限制空间相位差，避免后沿顶点过度滞后。
             flowDelay = Mathf.Clamp(flowDelay, 0f, 0.75f);
+            // 限制弯曲比例，保持可逆 S 曲线的稳定形状。
             curveBend = Mathf.Clamp(curveBend, 0f, MaximumCurveBendRatio);
+            // 弯曲绝对上限不能为负。
             maximumCurveBend = Mathf.Max(0f, maximumCurveBend);
+            // 将横向漏斗收束指数限制为有效范围。
             funnelPower = Mathf.Clamp(funnelPower, 0.2f, 2f);
+            // 淡出起点必须早于终点，保证尾段存在有效区间。
             fadeStart = Mathf.Clamp(fadeStart, 0f, 0.99f);
+            // 编辑器中的隐藏进度同样限制为零到一。
             effectAmount = Mathf.Clamp01(effectAmount);
 
             // Prefab编辑阶段允许没有Canvas，引用入口会按Overlay语义安全降级。
@@ -611,6 +651,7 @@ namespace JH
         {
             // 停用状态必须保留Graphic自身网格，保证组件开关和遮罩重建稳定。
             if (!isActiveAndEnabled || vertexHelper == null || vertexHelper.currentVertCount == 0)
+                // 停用、空网格或无顶点时保留 Graphic 本帧原始结果。
                 return;
 
             // 动态AddComponent或反序列化恢复时允许网格回调早于常规引用缓存。
@@ -624,12 +665,15 @@ namespace JH
 
             // 每次都从Graphic当帧提供的未变形网格开始，禁止在旧形变结果上累计误差。
             CacheSourceVertices(vertexHelper);
+            // 没有缓存到源顶点时结束本次形变。
             if (sourceVertices.Count == 0) return;
 
             // 标准Simple Image的四顶点可以安全重建为高细分连续曲面。
             if (CanBuildSubdividedImageGrid())
             {
+                // 重建标准 Image 的高细分连续网格并应用流动形变。
                 BuildSubdividedImageGrid(vertexHelper);
+                // 已完成细分网格后不再重复修改旧拓扑。
                 return;
             }
 
@@ -653,6 +697,7 @@ namespace JH
 
             // TMP组件被替换时先从旧实例移除委托，再处理新实例。
             UnsubscribeTMPPreRenderText();
+            // 保存当前 TMP 引用供网格与材质路径判定。
             textTMP = currentTMPText;
 
             // 普通Image和停用组件不需要持有任何TMP事件。
@@ -663,6 +708,7 @@ namespace JH
 
             // 在TMP把主网格和全部子材质网格上传CanvasRenderer之前修改顶点数组。
             textTMP.OnPreRenderText += HandleTMPPreRenderText;
+            // 记录实际订阅对象，避免重复绑定或解绑错误文本。
             subscribedTMPText = textTMP;
         }
 
@@ -673,6 +719,7 @@ namespace JH
         {
             // 先清空字段所有权，事件移除期间发生的生命周期回调不会再次命中旧实例。
             var previousTMPText = subscribedTMPText;
+            // 清除订阅记录，下一次启用可以重新绑定当前文本。
             subscribedTMPText = null;
 
             // TMP已经随GameObject销毁时事件本身也会释放，无需访问失效原生对象。
@@ -693,10 +740,12 @@ namespace JH
 
             // 没有材质网格时不存在可以计算边界或修改的文字顶点。
             var meshInfos = textInfo.meshInfo;
+            // 文本没有材质网格时不执行边界与顶点遍历。
             if (meshInfos == null || meshInfos.Length == 0) return;
 
             // 只处理TMP本轮声明为有效的材质数量，忽略容量数组中的历史网格。
             var materialCount = Mathf.Clamp(textInfo.materialCount, 0, meshInfos.Length);
+            // 没有有效材质区间时无需生成形变上下文。
             if (materialCount == 0) return;
 
             // 所有材质必须先共同计算一次整体边界，主文字和Fallback/Sprite子网格才能流向同一中心。
@@ -708,13 +757,18 @@ namespace JH
             // 逐材质处理TMP随后会上传的真实顶点数组，包含主字体、Fallback字体和Sprite网格。
             for (var materialIndex = 0; materialIndex < materialCount; materialIndex++)
             {
+                // 取得当前材质对应的 TMP 顶点与颜色缓冲区。
                 var meshInfo = meshInfos[materialIndex];
+                // 限制到当前实际有效的顶点数，忽略 TMP 复用缓冲区的尾部。
                 var validVertexCount = GetValidTMPVertexCount(meshInfo);
+                // 空子网格不参与本帧形变。
                 if (validVertexCount == 0) continue;
 
                 // TMP_MeshInfo是结构体，但顶点和颜色字段均为引用数组，原地修改会保留到上传阶段。
                 var vertices = meshInfo.vertices;
+                // 取得与顶点对应的颜色缓冲区，保留原文字颜色。
                 var colors = meshInfo.colors32;
+                // 仅修改当前子网格中的有效顶点。
                 for (var vertexIndex = 0; vertexIndex < validVertexCount; vertexIndex++)
                 {
                     // 每个字形四角和每个材质子网格都复用现有连续曲面位置公式。
@@ -722,6 +776,7 @@ namespace JH
 
                     // 标准TMP SDF材质没有流体Shader进度时，通过现有顶点Alpha完成尾段柔和消失。
                     if (colors != null && vertexIndex < colors.Length)
+                        // 按统一尾段曲线降低文字顶点 Alpha，保留各字原始颜色。
                         colors[vertexIndex] = ApplyFade(
                             colors[vertexIndex],
                             flowContext.Progress,
@@ -745,30 +800,44 @@ namespace JH
         {
             // 默认空边界只用于失败返回，成功路径会由第一个有效顶点初始化。
             bounds = default;
+            // 记录是否已经遇到首个有效顶点。
             var hasVertex = false;
+            // 初始化边界下界，首个顶点到来时再赋实际位置。
             var minimum = Vector2.zero;
+            // 初始化边界上界，避免沿用上一帧范围。
             var maximum = Vector2.zero;
 
             // 边界必须跨越全部材质，否则Fallback字形会围绕另一中心产生跳裂。
             for (var materialIndex = 0; materialIndex < materialCount; materialIndex++)
             {
+                // 取得当前材质的 TMP 网格信息。
                 var meshInfo = meshInfos[materialIndex];
+                // 只遍历网格当前声明且缓冲区能够容纳的顶点。
                 var validVertexCount = GetValidTMPVertexCount(meshInfo);
+                // 累积当前子网格的全部有效顶点边界。
                 for (var vertexIndex = 0; vertexIndex < validVertexCount; vertexIndex++)
                 {
+                    // 读取文本顶点的本地三维位置。
                     var vertex = meshInfo.vertices[vertexIndex];
+                    // 边界只需要 UI 平面的二维坐标。
                     var position = new Vector2(vertex.x, vertex.y);
 
                     // 第一个真实顶点负责初始化最小值和最大值，禁止零点把偏移文字边界错误扩大。
                     if (!hasVertex)
                     {
+                        // 首个有效顶点同时确定边界下界。
                         minimum = position;
+                        // 首个有效顶点同时确定边界上界。
                         maximum = position;
+                        // 标记边界已建立，后续顶点进入扩展路径。
                         hasVertex = true;
+                        // 首顶点已完成初始化，不重复执行边界扩展。
                         continue;
                     }
 
+                    // 按坐标分量扩展边界最小值。
                     minimum = Vector2.Min(minimum, position);
+                    // 按坐标分量扩展边界最大值。
                     maximum = Vector2.Max(maximum, position);
                 }
             }
@@ -776,7 +845,9 @@ namespace JH
             // 空文本和全部材质零顶点时保持TMP原始空网格。
             if (!hasVertex) return false;
 
+            // 用最小点与跨度构建覆盖所有文字子网格的矩形。
             bounds = new Rect(minimum, maximum - minimum);
+            // 已经取得至少一个有效顶点，边界计算成功。
             return true;
         }
 
@@ -813,6 +884,7 @@ namespace JH
 
             // CanvasRenderer保存Graphic最终提交的网格，空结果在下一帧可自然重试。
             var mesh = render.GetMesh();
+            // CanvasRenderer 尚未提供网格时保留现有兼容缓存。
             if (!mesh) return;
 
             // 复制顶点只用于兼容旧序列化和距离排序，不参与逐帧曲面生成。
@@ -834,8 +906,11 @@ namespace JH
             // UIVertex同时保存Sprite UV、颜色、法线和切线，细分时必须完整保留。
             for (var index = 0; index < vertexHelper.currentVertCount; index++)
             {
+                // 准备承接 VertexHelper 完整顶点通道的结构体。
                 var vertex = default(UIVertex);
+                // 读取当前索引的原始 UI 顶点。
                 vertexHelper.PopulateUIVertex(ref vertex, index);
+                // 保存副本，后续形变始终基于当帧未变形数据。
                 sourceVertices.Add(vertex);
             }
         }
@@ -867,12 +942,16 @@ namespace JH
         {
             // 从真实源顶点而非RectTransform推导边界，完整支持preserveAspect和Sprite裁边。
             var sourceBounds = CalculateBounds(sourceVertices);
+            // 任一方向没有有效尺寸时无法建立二维细分网格。
             if (sourceBounds.width <= Mathf.Epsilon || sourceBounds.height <= Mathf.Epsilon) return;
 
             // 按空间角点查找源顶点，避免依赖Unity版本可能变化的四顶点排列顺序。
             var bottomLeft = FindClosestVertex(new Vector2(sourceBounds.xMin, sourceBounds.yMin));
+            // 匹配左上角的原始顶点，保留该角的颜色与 UV 等通道。
             var topLeft = FindClosestVertex(new Vector2(sourceBounds.xMin, sourceBounds.yMax));
+            // 匹配右上角原始顶点。
             var topRight = FindClosestVertex(new Vector2(sourceBounds.xMax, sourceBounds.yMax));
+            // 匹配右下角原始顶点。
             var bottomRight = FindClosestVertex(new Vector2(sourceBounds.xMax, sourceBounds.yMin));
 
             // 小图标按本地尺寸自动减少细分，大图标最多使用24×16默认上限。
@@ -898,10 +977,14 @@ namespace JH
             // 先生成全部网格顶点，UV和颜色通过四角双线性插值保持连续。
             for (var y = 0; y <= resolvedVerticalSegments; y++)
             {
+                // 将当前行映射为零到一的纵向插值比例。
                 var verticalRatio = y / (float)resolvedVerticalSegments;
+                // 逐列生成当前行的细分顶点，并包含最右边界。
                 for (var x = 0; x <= resolvedHorizontalSegments; x++)
                 {
+                    // 将当前列映射为零到一的横向插值比例。
                     var horizontalRatio = x / (float)resolvedHorizontalSegments;
+                    // 对原始四角全部通道进行双线性插值，得到当前网格点。
                     var vertex = BilinearInterpolate(
                         bottomLeft,
                         topLeft,
@@ -922,22 +1005,31 @@ namespace JH
                         flowContext.Progress,
                         flowContext.UseVertexFade,
                         flowContext.Configuration.FadeStart);
+                    // 将形变与透明度处理后的顶点加入输出网格。
                     vertexHelper.AddVert(vertex);
                 }
             }
 
             // 规则网格每个单元使用相同绕序的两个三角形，避免出现裂缝或棋盘翻面。
             var verticesPerRow = resolvedHorizontalSegments + 1;
+            // 逐行连接相邻细分站点，最后一行只作为上边界。
             for (var y = 0; y < resolvedVerticalSegments; y++)
             {
+                // 逐列把一个矩形单元拆为两个三角形。
                 for (var x = 0; x < resolvedHorizontalSegments; x++)
                 {
+                    // 计算当前网格单元的左下角索引。
                     var bottomLeftIndex = y * verticesPerRow + x;
+                    // 右下角紧邻当前行左下角。
                     var bottomRightIndex = bottomLeftIndex + 1;
+                    // 左上角位于下一行相同列。
                     var topLeftIndex = bottomLeftIndex + verticesPerRow;
+                    // 右上角紧邻下一行左上角。
                     var topRightIndex = topLeftIndex + 1;
 
+                    // 添加单元左下、左上、右上组成的第一个三角形。
                     vertexHelper.AddTriangle(bottomLeftIndex, topLeftIndex, topRightIndex);
+                    // 添加单元左下、右上、右下组成的第二个三角形。
                     vertexHelper.AddTriangle(bottomLeftIndex, topRightIndex, bottomRightIndex);
                 }
             }
@@ -951,10 +1043,12 @@ namespace JH
         {
             // 复杂图形沿自身真实顶点范围建立同一漏斗路径。
             var sourceBounds = CalculateBounds(sourceVertices);
+            // 源边界完全退化为点时跳过没有空间意义的形变。
             if (sourceBounds.width <= Mathf.Epsilon && sourceBounds.height <= Mathf.Epsilon) return;
 
             // 同一Graphic内所有字形和顶点共享终点及曲线，避免字形间出现方向跳变。
             var flowContext = CreateFlowContext(sourceBounds);
+            // 保留原网格拓扑，逐一更新已有顶点。
             for (var index = 0; index < vertexHelper.currentVertCount; index++)
             {
                 // 从Graphic当前原始拓扑中读取一个完整UI顶点。
@@ -1027,6 +1121,7 @@ namespace JH
 
             // 投影半径覆盖矩形在目标方向上的完整半宽，用于计算前沿和尾沿相位。
             var sourceExtents = sourceBounds.size * 0.5f;
+            // 将矩形半尺寸投影到目标方向，得到空间相位归一化半径。
             var projectionRadius = Mathf.Abs(targetDirection.x) * sourceExtents.x +
                                    Mathf.Abs(targetDirection.y) * sourceExtents.y;
 
@@ -1077,6 +1172,7 @@ namespace JH
         {
             // 所有失败出口都返回确定的默认值，禁止上一帧路径泄漏到当前网格。
             localPath = default;
+            // 默认不施加队形偏移，防止转换失败后残留旧组数据。
             formationOffset = Vector2.zero;
 
             // 未由Controller接管时直接进入单组件路径，不执行无意义坐标转换。
@@ -1090,6 +1186,7 @@ namespace JH
                     rectTransform,
                     groupFlowPathScreen.Start,
                     out var localStart))
+                // 统一起点转换失败时整个组路径不可用。
                 return false;
 
             // 第一个控制点原样转换，禁止按子物体方向重新计算弯曲法线。
@@ -1097,6 +1194,7 @@ namespace JH
                     rectTransform,
                     groupFlowPathScreen.FirstControlPoint,
                     out var localFirstControlPoint))
+                // 第一个控制点无法转换时回退到独立路径。
                 return false;
 
             // 第二个控制点同样只做坐标变换，保持全组主路径几何一致。
@@ -1104,6 +1202,7 @@ namespace JH
                     rectTransform,
                     groupFlowPathScreen.SecondControlPoint,
                     out var localSecondControlPoint))
+                // 第二个控制点无法转换时禁止使用不完整的统一曲线。
                 return false;
 
             // 统一终点转换失败时不能使用部分路径，完整退回独立模式计算。
@@ -1111,6 +1210,7 @@ namespace JH
                     rectTransform,
                     groupFlowPathScreen.End,
                     out var localEnd))
+                // 终点转换失败时让调用方完整使用独立路径。
                 return false;
 
             // 使用四个已经确定的控制点创建本地主路径，不派生任何子物体专属曲线。
@@ -1184,16 +1284,19 @@ namespace JH
             // 起终点重合时仍平滑收束，避免除零和方向抖动。
             if (flowContext.TargetDistance <= MinimumFlowDistance)
             {
+                // 源中心与终点重合时直接将顶点向收束点插值。
                 var coincidentPosition = Vector2.Lerp(
                     new Vector2(originPosition.x, originPosition.y),
                     flowContext.TargetPoint,
                     flowContext.Progress);
+                // 保留源顶点深度，只修改 UI 平面坐标。
                 return new Vector3(coincidentPosition.x, coincidentPosition.y, originPosition.z);
             }
 
             // 将顶点偏移拆成沿目标方向和垂直目标方向的两个分量。
             var sourceOffset =
                 new Vector2(originPosition.x, originPosition.y) - flowContext.SourceCenter;
+            // 将顶点相对中心的偏移投影到主前进方向。
             var projectedOffset = Vector2.Dot(sourceOffset, flowContext.TargetDirection);
 
             // 越靠近终点的前沿顶点相位越快，整张网格形成连续拖尾而不是单角尖刺。
@@ -1208,6 +1311,7 @@ namespace JH
                                 (1f - frontFactor) *
                                 flowContext.Configuration.FlowDelay *
                                 3f;
+            // 按空间相位指数推导当前顶点的局部进度。
             var localProgress = Mathf.Pow(flowContext.Progress, phaseExponent);
 
             // 子物体相对全组起点的队形偏移随路径推进逐渐收束，终点严格归零。
@@ -1221,16 +1325,20 @@ namespace JH
 
             // 纵向长度和横向宽度分别收束，横向使用较软幂曲线形成漏斗截面。
             var longitudinalOffset = flowContext.TargetDirection * projectedOffset;
+            // 去除纵向分量，得到垂直于路径的横向偏移。
             var transverseOffset = sourceOffset - longitudinalOffset;
+            // 横向偏移按漏斗幂曲线逐步收束。
             var transverseScale = Mathf.Pow(
                 Mathf.Max(0f, 1f - localProgress),
                 flowContext.Configuration.FunnelPower);
+            // 纵向偏移随局部进度线性缩短至零。
             var longitudinalScale = 1f - localProgress;
 
             // 所有顶点最终严格落在同一目标点，同时保留动画期间的连续面拓扑。
             var deformedPosition = pathCenter +
                                    longitudinalOffset * longitudinalScale +
                                    transverseOffset * transverseScale;
+            // 把二维曲面结果与源顶点原有深度合并返回。
             return new Vector3(deformedPosition.x, deformedPosition.y, originPosition.z);
         }
 
@@ -1243,6 +1351,7 @@ namespace JH
         {
             // 三次SmoothStep没有额外弹性或过冲，便于与线性UI过渡稳定组合。
             var progress = Mathf.Clamp01(linearProgress);
+            // 使用标准三次 SmoothStep，让进度首尾速度为零。
             return progress * progress * (3f - 2f * progress);
         }
 
@@ -1271,71 +1380,105 @@ namespace JH
                 currentFadeStart,
                 1f,
                 progress);
+            // 对淡出区间求反向 SmoothStep，得到剩余可见度。
             var opacity = 1f - fadeProgress * fadeProgress * (3f - 2f * fadeProgress);
+            // 用剩余可见度缩放原 Alpha 并限制到字节范围。
             sourceColor.a = (byte)Mathf.Clamp(
                 Mathf.RoundToInt(sourceColor.a * opacity),
                 byte.MinValue,
                 byte.MaxValue);
+            // 返回 RGB 不变、仅按需淡出的顶点颜色。
             return sourceColor;
         }
 
         /// <summary>
         ///  根据图形本地尺寸解析实际细分段数。
         /// </summary>
+        /// <param name="configuredSegments">该方向配置允许的最大细分段数。</param>
+        /// <param name="localSize">图形在该方向上的本地尺寸。</param>
+        /// <returns>按本地尺寸计算并限制到配置范围内的段数。</returns>
         private static int ResolveSegmentCount(int configuredSegments, float localSize)
         {
             // 小尺寸图形自动减面，大尺寸图形受配置上限保护。
             var sizeBasedSegments =
                 Mathf.CeilToInt(Mathf.Abs(localSize) / MinimumLocalUnitsPerSegment);
+            // 将尺寸估算的段数限制到最小细分与配置上限之间。
             return Mathf.Clamp(sizeBasedSegments, MinimumGridSegments, configuredSegments);
         }
 
         /// <summary>
         ///  计算一组UI顶点在Graphic本地坐标中的轴对齐边界。
         /// </summary>
+        /// <param name="vertices">至少包含一个顶点的原始 UI 顶点列表。</param>
+        /// <returns>覆盖全部源顶点的本地轴对齐矩形。</returns>
         private static Rect CalculateBounds(IReadOnlyList<UIVertex> vertices)
         {
+            // 以首顶点初始化二维边界下界。
             var minimum = new Vector2(vertices[0].position.x, vertices[0].position.y);
+            // 同一首顶点也作为边界上界起点。
             var maximum = minimum;
+            // 遍历其余顶点扩展边界。
             for (var index = 1; index < vertices.Count; index++)
             {
+                // 取顶点的本地 XY 坐标参与矩形范围计算。
                 var position =
                     new Vector2(vertices[index].position.x, vertices[index].position.y);
+                // 按分量更新最小坐标。
                 minimum = Vector2.Min(minimum, position);
+                // 按分量更新最大坐标。
                 maximum = Vector2.Max(maximum, position);
             }
 
+            // 返回覆盖全部顶点的起点与尺寸矩形。
             return new Rect(minimum, maximum - minimum);
         }
 
         /// <summary>
         ///  查找最接近指定空间角点的源顶点。
         /// </summary>
+        /// <param name="cornerPosition">要匹配的 Graphic 本地边界角点。</param>
+        /// <returns>距离指定角点最近的源顶点副本。</returns>
         private UIVertex FindClosestVertex(Vector2 cornerPosition)
         {
+            // 先把首个源顶点作为最近候选。
             var closestVertex = sourceVertices[0];
+            // 缓存首候选到目标角点的距离平方，避免开方。
             var closestDistance =
                 (new Vector2(closestVertex.position.x, closestVertex.position.y) -
                  cornerPosition).sqrMagnitude;
 
+            // 检查其余源顶点，逐步保留更近的候选。
             for (var index = 1; index < sourceVertices.Count; index++)
             {
+                // 读取当前待比较的顶点。
                 var vertex = sourceVertices[index];
+                // 计算其到目标角点的本地距离平方。
                 var distance =
                     (new Vector2(vertex.position.x, vertex.position.y) -
                      cornerPosition).sqrMagnitude;
+                // 距离没有改善时保留已有候选。
                 if (distance >= closestDistance) continue;
 
+                // 保存当前更近的源顶点及其全部通道。
                 closestVertex = vertex;
+                // 更新最短距离供后续候选比较。
                 closestDistance = distance;
             }
 
+            // 返回空间上最接近目标角点的源顶点。
             return closestVertex;
         }
 
         /// <summary>
         ///  双线性插值四角UI顶点的全部通道。
         /// </summary>
+        /// <param name="bottomLeft">左下角源顶点。</param>
+        /// <param name="topLeft">左上角源顶点。</param>
+        /// <param name="topRight">右上角源顶点。</param>
+        /// <param name="bottomRight">右下角源顶点。</param>
+        /// <param name="horizontalRatio">从左边到右边的插值比例。</param>
+        /// <param name="verticalRatio">从下边到上边的插值比例。</param>
+        /// <returns>保留全部顶点通道的双线性插值结果。</returns>
         private static UIVertex BilinearInterpolate(
             UIVertex bottomLeft,
             UIVertex topLeft,
@@ -1344,34 +1487,54 @@ namespace JH
             float horizontalRatio,
             float verticalRatio)
         {
+            // 先沿底边插值得到当前列的下端顶点。
             var bottom = LerpVertex(bottomLeft, bottomRight, horizontalRatio);
+            // 沿顶边使用相同横向权重取得上端顶点。
             var top = LerpVertex(topLeft, topRight, horizontalRatio);
+            // 再在上下两个结果之间按纵向比例插值。
             return LerpVertex(bottom, top, verticalRatio);
         }
 
         /// <summary>
         ///  插值两个UI顶点的位置、颜色、全部UV、法线和切线。
         /// </summary>
+        /// <param name="start">插值起点的 UI 顶点。</param>
+        /// <param name="end">插值终点的 UI 顶点。</param>
+        /// <param name="progress">各顶点通道共用的插值权重。</param>
+        /// <returns>位置、颜色、UV、法线和切线分别插值后的顶点。</returns>
         private static UIVertex LerpVertex(UIVertex start, UIVertex end, float progress)
         {
+            // 复制起点作为输出基础，保留未显式改写的字段。
             var vertex = start;
+            // 对本地位置进行不钳制的线性插值。
             vertex.position = Vector3.LerpUnclamped(start.position, end.position, progress);
+            // 按相同进度插值顶点颜色。
             vertex.color = Color32.Lerp(start.color, end.color, progress);
+            // 插值基础 UV，包括共享 Shader 使用的附加分量。
             vertex.uv0 = Vector4.LerpUnclamped(start.uv0, end.uv0, progress);
+            // 保留并插值第二组 UV 数据。
             vertex.uv1 = Vector4.LerpUnclamped(start.uv1, end.uv1, progress);
+            // 保留并插值第三组 UV 数据。
             vertex.uv2 = Vector4.LerpUnclamped(start.uv2, end.uv2, progress);
+            // 保留并插值第四组 UV 数据。
             vertex.uv3 = Vector4.LerpUnclamped(start.uv3, end.uv3, progress);
+            // 插值源网格法线，兼容需要法线的自定义 Graphic。
             vertex.normal = Vector3.LerpUnclamped(start.normal, end.normal, progress);
+            // 插值源网格切线，保留自定义材质需要的通道。
             vertex.tangent = Vector4.LerpUnclamped(start.tangent, end.tangent, progress);
+            // 返回全部相关通道已插值的顶点。
             return vertex;
         }
 
         /// <summary>
         ///  将屏幕终点转换为当前Graphic的本地二维坐标。
         /// </summary>
+        /// <returns>终点的本地坐标；转换失败时返回矩形中心，非矩形节点返回零。</returns>
         private Vector2 GetEndPointOS2D()
         {
+            // 取得当前 Graphic 进行屏幕投影所需的矩形平面。
             var rectTransform = transform as RectTransform;
+            // 异常非矩形节点使用本地原点降级。
             if (!rectTransform) return Vector2.zero;
 
             // 嵌套Canvas换父后始终重新核对rootCanvas相机语义。
@@ -1383,6 +1546,7 @@ namespace JH
                     new Vector2(endScreenPoint.x, endScreenPoint.y),
                     uiCamera,
                     out var localPoint))
+                // 投影成功时直接采用解析出的本地终点。
                 return localPoint;
 
             // 相机射线无法命中当前平面时保留矩形中心，禁止产生未初始化终点。
@@ -1397,7 +1561,9 @@ namespace JH
             // 尚未通过UpdateOriginVertices取得缓存时无需主动强制Canvas重建。
             if (originVerticesOS == null || originVerticesOS.Length == 0) return;
 
+            // 将统一屏幕终点转换到兼容顶点缓存的本地空间。
             var endPointOS = GetEndPointOS2D();
+            // 按顶点到终点的距离平方排序，并保存原始顶点索引。
             distanceIndex = originVerticesOS
                 .Select((vertex, index) => new { vertex, index })
                 .OrderBy(pair =>
@@ -1413,6 +1579,7 @@ namespace JH
         {
             // UIFlowMeshEffect只修改同一物体上的Graphic和CanvasRenderer。
             if (!graphic) graphic = GetComponent<Graphic>();
+            // 补齐同节点 CanvasRenderer 引用以支持兼容网格读取。
             if (!render) render = GetComponent<CanvasRenderer>();
 
             // TMP引用只用于专用OnPreRenderText路径，普通Image会稳定保持为空。
@@ -1429,6 +1596,7 @@ namespace JH
         {
             // Graphic.canvas可正确返回运行时嵌套排序Canvas，缺失时再向父级查找。
             var ownerCanvas = graphic ? graphic.canvas : GetComponentInParent<Canvas>();
+            // 按根 Canvas 的实际渲染模式更新坐标转换相机。
             uiCamera = UIFlowCanvasCamera.Resolve(ownerCanvas);
         }
 
@@ -1439,6 +1607,7 @@ namespace JH
         ///  Graphic材质槽显示None时，<see cref="Graphic.material"/>仍会返回defaultMaterial，
         ///  因此必须比较两者才能区分默认材质与用户显式配置的特殊材质。
         /// </remarks>
+        /// <param name="updateVersion">本次材质调用开始时捕获的更新版本。</param>
         private void InitializeSharedFlowMaterial(int updateVersion)
         {
             // 缺少Graphic时没有可安装材质的渲染目标，保持CPU路径安全返回。
@@ -1471,6 +1640,7 @@ namespace JH
 
             // setter同步回调前先登记安装关系，新组或销毁清理才能识别本组件拥有的材质。
             installedSharedFlowMaterial = materialPrefab;
+            // 把共享资产写入 Graphic；同步回调发生前所有权已登记。
             graphic.material = materialPrefab;
             // setter已经标脏；返回调用方复查版本，禁止旧调用覆盖回调建立的新所有权。
         }
@@ -1498,131 +1668,16 @@ namespace JH
         {
             // OnDisable仍需恢复网格，只有销毁才停止；标脏回调可能在同一调用栈移除本组件。
             if (isDestroying || !this) return;
+            // 尚未缓存 Graphic 时重新查找当前节点的渲染组件。
             if (!graphic) graphic = GetComponent<Graphic>();
 
             // TMP只有在属性变化标记成立时才会重新GenerateTextMesh并触发OnPreRenderText。
             if (!textTMP) textTMP = GetComponent<TMP_Text>();
+            // 通知 TMP 重新生成文字网格，使启停或参数变化及时生效。
             if (textTMP) textTMP.havePropertiesChanged = true;
 
             // 保留标准SetVerticesDirty语义，普通Image和TMP都进入各自的Canvas重建队列。
             if (graphic) graphic.SetVerticesDirty();
-        }
-
-        /// <summary>
-        ///  保存一帧内全部顶点共享的贝塞尔漏斗参数。
-        /// </summary>
-        private readonly struct FlowContext
-        {
-            /// <summary>
-            ///  创建不可变的流动路径上下文。
-            /// </summary>
-            /// <param name="sourceCenter">Graphic原始顶点边界的本地中心。</param>
-            /// <param name="targetPoint">屏幕终点转换到Graphic本地空间后的收束点。</param>
-            /// <param name="targetDirection">从原始中心指向收束点的标准化方向。</param>
-            /// <param name="targetDistance">原始中心到收束点的弦长。</param>
-            /// <param name="projectionRadius">原图形沿目标方向投影后的半径。</param>
-            /// <param name="path">全部顶点共同使用的不可变S曲线路径。</param>
-            /// <param name="formationOffset">当前子物体相对统一主路径起点的本地队形偏移。</param>
-            /// <param name="configuration">当前帧使用的不可变网格形变参数。</param>
-            /// <param name="progress">已经应用组件唯一时间缓动的当前帧进度。</param>
-            /// <param name="useSharedFlowShader">当前材质是否从uv0.z读取独立流动进度。</param>
-            public FlowContext(
-                Vector2 sourceCenter,
-                Vector2 targetPoint,
-                Vector2 targetDirection,
-                float targetDistance,
-                float projectionRadius,
-                UIFlowPath2D path,
-                Vector2 formationOffset,
-                UIFlowMeshConfiguration configuration,
-                float progress,
-                bool useSharedFlowShader)
-            {
-                // 保存全部顶点共同使用的原始中心。
-                SourceCenter = sourceCenter;
-
-                // 保存当前Graphic本地空间中的最终收束点。
-                TargetPoint = targetPoint;
-
-                // 保存从原始中心指向收束点的标准化方向。
-                TargetDirection = targetDirection;
-
-                // 保存原始中心到收束点的弦长。
-                TargetDistance = targetDistance;
-
-                // 保存原图形在目标方向上的投影半径。
-                ProjectionRadius = projectionRadius;
-
-                // 保存当前帧使用的不可变S曲线路径。
-                Path = path;
-
-                // 保存当前子物体相对统一主路径起点的初始队形偏移。
-                FormationOffset = formationOffset;
-
-                // 保存Controller统一参数或单组件降级参数。
-                Configuration = configuration;
-
-                // 保存已经应用唯一时间缓动的当前帧进度。
-                Progress = progress;
-
-                // 保存当前材质是否能够从基础UV通道读取独立流动进度。
-                UseSharedFlowShader = useSharedFlowShader;
-            }
-
-            /// <summary>
-            ///  原始图形中心。
-            /// </summary>
-            public Vector2 SourceCenter { get; }
-
-            /// <summary>
-            ///  当前Graphic本地空间中的收束点。
-            /// </summary>
-            public Vector2 TargetPoint { get; }
-
-            /// <summary>
-            ///  从源中心指向终点的单位方向。
-            /// </summary>
-            public Vector2 TargetDirection { get; }
-
-            /// <summary>
-            ///  源中心到终点的本地距离。
-            /// </summary>
-            public float TargetDistance { get; }
-
-            /// <summary>
-            ///  原图形沿目标方向投影后的半径。
-            /// </summary>
-            public float ProjectionRadius { get; }
-
-            /// <summary>
-            ///  当前漏斗与刚性主体、Ribbon共同使用的不可变S曲线路径。
-            /// </summary>
-            public UIFlowPath2D Path { get; }
-
-            /// <summary>
-            ///  当前子物体相对统一主路径起点的初始队形偏移。
-            /// </summary>
-            public Vector2 FormationOffset { get; }
-
-            /// <summary>
-            ///  当前帧全部顶点共同使用的不可变网格形变参数。
-            /// </summary>
-            public UIFlowMeshConfiguration Configuration { get; }
-
-            /// <summary>
-            ///  已经应用组件唯一时间曲线的本帧进度。
-            /// </summary>
-            public float Progress { get; }
-
-            /// <summary>
-            ///  当前材质是否使用uv0.z读取逐Graphic独立流动进度。
-            /// </summary>
-            public bool UseSharedFlowShader { get; }
-
-            /// <summary>
-            ///  当前材质不支持共享流动Shader时是否使用顶点Alpha降级。
-            /// </summary>
-            public bool UseVertexFade => !UseSharedFlowShader;
         }
     }
 }

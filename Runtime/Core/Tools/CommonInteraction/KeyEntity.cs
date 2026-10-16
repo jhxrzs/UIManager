@@ -17,6 +17,9 @@ namespace JH
         private static readonly char[] KeyNameSeparators = { ' ' };
 
         // 同一物理按键可能有多个合法名称，必须保留枚举声明的全部别名。
+        /// <summary>
+        ///  Key 枚举声明的全部名称和别名，按名称校验时忽略大小写。
+        /// </summary>
         private static readonly HashSet<string> DeclaredKeyNames =
             new(Enum.GetNames(typeof(Key)), StringComparer.OrdinalIgnoreCase);
 
@@ -89,7 +92,9 @@ namespace JH
             // 空配置表示当前实体没有触发按键，不属于错误。
             if (string.IsNullOrWhiteSpace(keyNames))
             {
+                // 清除旧配置遗留的无效名称提示。
                 invalidKeyNames = string.Empty;
+                // 空配置无需继续解析。
                 return;
             }
 
@@ -98,6 +103,7 @@ namespace JH
 
             // 仅使用空格分隔不同按键，并允许连续空格或末尾空格。
             var splitKeyNames = keyNames.Split(KeyNameSeparators, StringSplitOptions.RemoveEmptyEntries);
+            // 依照输入顺序逐个处理按键名称。
             for (var i = 0; i < splitKeyNames.Length; i++)
             {
                 // 去除名称两侧残留的空白，保证枚举解析使用规范名称。
@@ -109,12 +115,15 @@ namespace JH
                 // 无法映射为有效键盘按键时记录原始名称，供编辑器明确提示。
                 if (!TryParseKey(keyName, out var key))
                 {
+                    // 保存当前无效名称以便统一提示。
                     invalidNames.Add(keyName);
+                    // 跳过当前无效项，继续解析后续名称。
                     continue;
                 }
 
                 // 重复名称只保留第一次出现的位置。
                 if (keys.Contains(key)) continue;
+                // 把首次出现的有效按键加入运行时缓存。
                 keys.Add(key);
             }
 
@@ -140,12 +149,15 @@ namespace JH
             // 拒绝其余纯数字字符串，避免Enum.TryParse把数值误当成枚举底层值。
             if (int.TryParse(keyName, out _))
             {
+                // 解析失败时明确输出空按键。
                 key = Key.None;
+                // 拒绝通过底层整数值指定按键。
                 return false;
             }
 
             // 先核对完整的声明名称，既接受别名，也拒绝TryParse允许的组合枚举文本。
             key = Key.None;
+            // 只接受已声明的名称或别名，并排除表示空值的 None。
             return DeclaredKeyNames.Contains(keyName) &&
                    Enum.TryParse(keyName, true, out key) && key != Key.None;
         }

@@ -3,6 +3,7 @@ using UnityEngine;
 
 namespace JH
 {
+    /// <summary>提供流动组按屏幕方向排列成员的私有比较器。</summary>
     public partial class UIFlowGroupController
     {
         /// <summary>
@@ -70,20 +71,24 @@ namespace JH
                 var xScreenPoint = RectTransformUtility.WorldToScreenPoint(
                     _uiCamera,
                     x.transform.position);
+                // 用相同相机取得右侧候选的屏幕位置。
                 var yScreenPoint = RectTransformUtility.WorldToScreenPoint(
                     _uiCamera,
                     y.transform.position);
 
                 // 从统一终点指向候选位置，形成角度比较使用的单位方向。
                 var xDirection = (xScreenPoint - _endScreenPoint).normalized;
+                // 计算右侧候选从统一终点出发的单位方向。
                 var yDirection = (yScreenPoint - _endScreenPoint).normalized;
 
                 // 两个方向使用完全相同的顺时针零度基准。
                 var xAngle = GetClockwiseAngle(xDirection);
+                // 用同一零度基准计算右侧候选角度。
                 var yAngle = GetClockwiseAngle(yDirection);
 
                 // 优先按照实际角度排序。
                 var angleComparison = xAngle.CompareTo(yAngle);
+                // 角度不同时直接采用角度比较结果。
                 if (angleComparison != 0) return angleComparison;
 
                 // 相同角度使用Unity实体编号稳定打破平局，List.Sort不会在帧间随机交换顺序。

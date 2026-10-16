@@ -33,7 +33,9 @@ namespace JH
         {
             get
             {
+                // Unity 对象失效时重新取得当前节点的 Graphic，并复用有效缓存。
                 if (!graphic) graphic = GetComponent<Graphic>();
+                // 返回已校正的同节点 Graphic 引用。
                 return graphic;
             }
         }

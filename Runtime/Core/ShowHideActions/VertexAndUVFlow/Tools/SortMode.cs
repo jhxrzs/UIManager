@@ -1,5 +1,6 @@
 namespace JH
 {
+    /// <summary>声明流动组内部使用的成员排序方式。</summary>
     public partial class UIFlowGroupController
     {
         /// <summary>

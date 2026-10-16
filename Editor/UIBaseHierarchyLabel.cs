@@ -53,6 +53,7 @@ namespace JH
         {
             // 新版编辑器通过EntityId还原Hierarchy中的GameObject。
             var gameObject = EditorUtility.EntityIdToObject(entityId) as GameObject;
+            // 将还原的对象交给统一标签绘制入口。
             DrawHierarchyLabel(gameObject, selectionRect);
         }
 #else
@@ -65,6 +66,7 @@ namespace JH
         {
             // 旧版编辑器通过InstanceID还原Hierarchy中的GameObject。
             var gameObject = EditorUtility.InstanceIDToObject(instanceID) as GameObject;
+            // 将还原的对象交给统一标签绘制入口。
             DrawHierarchyLabel(gameObject, selectionRect);
         }
 #endif
@@ -84,20 +86,25 @@ namespace JH
 
             // 使用同一份SerializedObject读取私有序列化字段，保持与Inspector数据一致。
             var serializedUI = new SerializedObject(uiBase);
+            // 读取该面板所属的互斥组编号。
             var mutexGroupValue = serializedUI.FindProperty("mutexGroup").intValue;
+            // 读取该面板在互斥组内的抢占优先级。
             var mutexPriorityValue = serializedUI.FindProperty("mutexPriority").intValue;
 
             // Showing和Showed均按显示生命周期标记，其余状态按隐藏标记。
             var stateLabel = uiBase.State is UIState.Showed or UIState.Showing ? "S" : "H";
+            // 组合组号、优先级和显隐缩写作为标签内容。
             var labelContent = $"{mutexGroupValue}/{mutexPriorityValue} {stateLabel}";
 
             // 在Hierarchy项右侧保留固定宽度绘制组号、优先级和状态。
             const float labelWidth = 110f;
+            // 将标签区域对齐到当前层级项的右边缘。
             var labelRect = new Rect(selectionRect)
             {
                 x = selectionRect.xMax - labelWidth,
                 width = labelWidth
             };
+            // 使用缓存样式绘制当前面板状态。
             EditorGUI.LabelField(labelRect, labelContent, LabelStyle);
         }
     }
