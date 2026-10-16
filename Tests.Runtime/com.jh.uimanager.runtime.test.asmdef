@@ -6,7 +6,9 @@
     "UnityEditor.TestRunner",
     "com.jh.uimanager.runtime",
     "UniTask",
-    "Unity.ugui"
+    "Unity.ugui",
+    "Unity.InputSystem",
+    "Unity.InputSystem.TestFramework"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

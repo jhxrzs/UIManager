@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 
 namespace JH
 {
@@ -64,6 +65,11 @@ namespace JH
         /// </summary>
         private void OnInputSystemAfterUpdate()
         {
+            // BeforeRender 不推进按键的更新计数，不能再次消费本轮 wasPressedThisFrame。
+            // 按输入更新类型筛选，保留同一渲染帧内合法的 Fixed 和 Manual 更新。
+            if (InputState.currentUpdateType is not (InputUpdateType.Dynamic or
+                InputUpdateType.Fixed or InputUpdateType.Manual)) return;
+
             // Unity对象已销毁或组件被开发者主动禁用时不再处理输入。
             if (!this || !enabled) return;
 
