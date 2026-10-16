@@ -343,6 +343,7 @@ namespace JH
 
                 // 只释放仍由当前Controller登记的旧状态，后来Controller的新状态不受影响。
                 ReleaseUnownedFlowMeshEffect(flowMeshEffect);
+                if (isDestroying || !this) return;
             }
         }
 
@@ -399,6 +400,7 @@ namespace JH
 
                 // 离组成员只释放当前Controller旧状态，后来Controller的新状态不会被覆盖。
                 ReleaseUnownedFlowMeshEffect(previousFlowMeshEffect);
+                if (isDestroying || !this) return;
             }
 
             // 临时旧集合在方法退出前清空，避免长期保留已离场景对象引用。
@@ -411,7 +413,7 @@ namespace JH
         /// <param name="linearProgress">Controller当前零到一线性进度。</param>
         private void ApplyGroupFlow(float linearProgress)
         {
-            if (isDestroying) return;
+            if (isDestroying || !this) return;
             pendingLinearProgress = linearProgress;
             flowUpdatePending = true;
             if (isUpdatingGroupFlow) return;
@@ -419,7 +421,7 @@ namespace JH
             isUpdatingGroupFlow = true;
             try
             {
-                while (flowUpdatePending || hierarchyRefreshPending)
+                while (!isDestroying && this && (flowUpdatePending || hierarchyRefreshPending))
                 {
                     var refreshHierarchy = hierarchyRefreshPending;
                     var progress = pendingLinearProgress;
@@ -428,7 +430,9 @@ namespace JH
                     if (refreshHierarchy)
                     {
                         RefreshOwnedFlowMeshEffects();
+                        if (isDestroying || !this) return;
                         SetMaterialPrefab();
+                        if (isDestroying || !this) return;
                     }
 
                     ApplyGroupFlowCore(progress);
@@ -442,11 +446,13 @@ namespace JH
 
         private void ApplyGroupFlowCore(float linearProgress)
         {
+            if (isDestroying || !this) return;
             // Canvas相机和Camera.main可能在动画期间更换，组路径与子网格必须读取同一规则。
             RefreshUICamera();
 
             // 每次消费缓存前执行无分配所有权校验，覆盖禁用组件错过层级回调的极端情况。
             PruneUnownedFlowMeshEffects();
+            if (isDestroying || !this) return;
 
             // 排序只影响可选时间错峰，所有子物体仍然采样同一条空间主路径。
             var sortedFlowMeshEffects = SortFlowMeshEffects();
@@ -505,6 +511,7 @@ namespace JH
                         groupScreenPath,
                         configuration,
                         childProgress);
+                    if (isDestroying || !this) return;
                     continue;
                 }
 
@@ -513,6 +520,7 @@ namespace JH
                     this,
                     endScreenPoint,
                     childProgress);
+                if (isDestroying || !this) return;
             }
         }
 
@@ -701,6 +709,8 @@ namespace JH
 
                 // 通过统一入口消除父子Awake顺序差异，并保留每个Graphic已有的自定义材质。
                 flowMeshEffect.ApplySharedMaterial(materialPrefab);
+                // 标脏回调可能移除控制器；不再推进枚举器或下发后续组状态。
+                if (isDestroying || !this) return;
             }
         }
 
@@ -734,18 +744,29 @@ namespace JH
         protected override void OnDestroy()
         {
             isDestroying = true;
-            // Controller禁用期间层级仍可能变化，销毁前重新扫描避免遗漏临时组状态。
-            RefreshOwnedFlowMeshEffects();
-
-            // 先让仍然存活的子组件恢复独立模式，禁止继续引用已销毁Controller的最后路径。
-            foreach (var flowMeshEffect in flowMeshEffects)
+            flowUpdatePending = false;
+            hierarchyRefreshPending = false;
+            try
             {
-                // 每个子组件只清理非序列化组状态，不改变材质和自身降级参数。
-                flowMeshEffect.DetachGroupController(this);
-            }
+                // 销毁可能重入材质、进度或离组清理的遍历，不能重建正在被消费的缓存。
+                var membersToDetach = new HashSet<UIFlowMeshEffect>(flowMeshEffects);
+                membersToDetach.UnionWith(sortedFlowMeshEffects);
 
-            // 保留基类对UIBase显示和隐藏事件的正式取消订阅流程。
-            base.OnDestroy();
+                // 禁用期间层级仍可能变化，用独立快照补齐尚未进入缓存的直属成员。
+                foreach (var candidate in GetComponentsInChildren<UIFlowMeshEffect>(true))
+                    if (IsOwnedFlowMeshEffect(candidate)) membersToDetach.Add(candidate);
+
+                foreach (var member in membersToDetach)
+                {
+                    // 前一个清理回调可销毁或迁移后续成员；成员内部的所有者检查保护新组。
+                    if (member) member.DetachGroupController(this);
+                }
+            }
+            finally
+            {
+                // 即使清理中的业务回调失败，也必须解除UIBase上的生命周期订阅。
+                base.OnDestroy();
+            }
         }
 
 #if UNITY_EDITOR
