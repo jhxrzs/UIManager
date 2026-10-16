@@ -264,6 +264,8 @@ public class ScaleEffectController : EffectControllerBase
 
 基类负责进度推进、取消和显隐事件订阅。需要更复杂的异步行为时，也可以通过 `ShowAsyncActions`、`HideAsyncActions` 注册处理器，并在适当的生命周期解除订阅。
 
+运行中单独移除动效组件时，该组件正在执行的行为会停止并保留当时的表现，不强制补到终点；面板继续等待其余行为完成。自定义异步动效应观察传入的取消令牌。调用方取消、显隐操作被替代或整个面板销毁时，仍按原规则取消面板操作。
+
 ## 常用 API
 
 | 成员 | 作用 |

@@ -12,6 +12,9 @@ namespace JH
     [RequireComponent(typeof(UIBase))]
     public class EffectControllerBase : MonoBehaviour
     {
+        private CancellationToken _effectLifetimeToken;
+        private bool _isDestroyed;
+
         /// <summary>  
         ///  动效应用的的UI面板
         /// </summary>
@@ -87,10 +90,50 @@ namespace JH
             // 保留编辑器已缓存的引用；运行时 AddComponent 或缺失缓存时只补查一次。
             if (!uiBase) uiBase = GetComponent<UIBase>();
             _ = CanvasGroup;
-            uiBase.ShowAsyncActions += OnUIShowAsync;
-            uiBase.HideAsyncActions += OnUIHideAsync;
-            uiBase.ShowActions += OnUIShow;
-            uiBase.HideActions += OnUIHide;
+            // 提前缓存；销毁后不得再读取 MonoBehaviour 的原生属性。
+            _effectLifetimeToken = destroyCancellationToken;
+            uiBase.ShowAsyncActions += ExecuteShowAsync;
+            uiBase.HideAsyncActions += ExecuteHideAsync;
+            uiBase.ShowActions += ExecuteShow;
+            uiBase.HideActions += ExecuteHide;
+        }
+
+        private void ExecuteShow()
+        {
+            // 委托快照可能仍包含已在同轮较早回调中移除的动效。
+            if (_isDestroyed || !this || _effectLifetimeToken.IsCancellationRequested) return;
+            OnUIShow();
+        }
+
+        private void ExecuteHide()
+        {
+            if (_isDestroyed || !this || _effectLifetimeToken.IsCancellationRequested) return;
+            OnUIHide();
+        }
+
+        private UniTask ExecuteShowAsync(CancellationToken token) => ExecuteEffectAsync(true, token);
+        private UniTask ExecuteHideAsync(CancellationToken token) => ExecuteEffectAsync(false, token);
+
+        private async UniTask ExecuteEffectAsync(bool showing, CancellationToken operationToken)
+        {
+            operationToken.ThrowIfCancellationRequested();
+            if (_isDestroyed || !this || _effectLifetimeToken.IsCancellationRequested) return;
+
+            // 包装整个虚方法，让派生控制器的准备与收尾也受同一寿命约束。
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(operationToken, _effectLifetimeToken);
+            try
+            {
+                if (showing) await OnUIShowAsync(linked.Token);
+                else await OnUIHideAsync(linked.Token);
+            }
+            catch (OperationCanceledException) when (
+                _effectLifetimeToken.IsCancellationRequested && !operationToken.IsCancellationRequested)
+            {
+                // 单独移除动效只结束该行为，不补终点，也不取消仍存活的面板。
+            }
+
+            // 外部取消、操作替换和面板销毁始终保留 UI 操作的取消语义。
+            operationToken.ThrowIfCancellationRequested();
         }
 
         /// <summary>
@@ -128,16 +171,17 @@ namespace JH
         }
 
         /// <summary>
-        ///  禁用脚本时，取消监听UI面板的异步显示事件
+        ///  销毁时解除监听；自身销毁令牌同时停止正在执行的动效。
         /// </summary>
         protected virtual void OnDestroy()
         {
+            _isDestroyed = true;
             if (uiBase != null)
             {
-                uiBase.ShowAsyncActions -= OnUIShowAsync;
-                uiBase.HideAsyncActions -= OnUIHideAsync;
-                uiBase.ShowActions -= OnUIShow;
-                uiBase.HideActions -= OnUIHide;
+                uiBase.ShowAsyncActions -= ExecuteShowAsync;
+                uiBase.HideAsyncActions -= ExecuteHideAsync;
+                uiBase.ShowActions -= ExecuteShow;
+                uiBase.HideActions -= ExecuteHide;
             }
         }
 
