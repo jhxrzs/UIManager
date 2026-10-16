@@ -183,6 +183,13 @@ namespace JH
         [NonSerialized]
         private Material installedSharedFlowMaterial;
 
+        // 材质赋值会同步触发Graphic回调；新更新或销毁必须使旧调用失效。
+        [NonSerialized]
+        private int materialUpdateVersion;
+
+        [NonSerialized]
+        private bool isDestroying;
+
         /// <summary>
         ///  当前组件是否正在使用上级Controller提供的统一主路径。
         /// </summary>
@@ -228,25 +235,25 @@ namespace JH
         /// <param name="sharedMaterial">默认Graphic可以共同使用的流动材质；为空时使用CPU降级路径。</param>
         internal void ApplySharedMaterial(Material sharedMaterial)
         {
+            if (isDestroying || !this) return;
+            var updateVersion = ++materialUpdateVersion;
+            materialPrefab = sharedMaterial;
+
             // 仅处理本组件主动安装的旧共享材质，用户后来替换的自定义材质绝不能恢复。
             if (installedSharedFlowMaterial && installedSharedFlowMaterial != sharedMaterial)
             {
-                // 当前材质仍是旧模板时恢复defaultMaterial，避免旧共享材质残留在Graphic上。
-                if (graphic && graphic.material == installedSharedFlowMaterial)
-                {
-                    // 空材质会让Graphic重新使用自身defaultMaterial。
-                    graphic.material = null;
-
-                    // 恢复默认材质后通知Canvas重新建立渲染状态。
-                    graphic.SetMaterialDirty();
-                }
-
-                // 模板变化后旧安装关系已经结束，后续初始化会按新模板重新判断。
+                var previousMaterial = installedSharedFlowMaterial;
+                // 先撤销旧安装关系，清理回调中的新更新才能独立登记自己的材质。
                 installedSharedFlowMaterial = null;
-            }
 
-            // 保存控制器传入的新共享模板，保留原字段名和序列化兼容性。
-            materialPrefab = sharedMaterial;
+                // 当前材质仍是旧模板时恢复defaultMaterial，避免旧共享材质残留在Graphic上。
+                if (graphic && graphic.material == previousMaterial)
+                {
+                    // setter同时触发材质标脏；回调可能换组、重入更新或销毁本组件。
+                    graphic.material = null;
+                    if (!IsCurrentMaterialUpdate(updateVersion)) return;
+                }
+            }
 
             // 编辑器只保存模板并刷新预览网格，禁止把运行时共享材质写入Prefab的Graphic字段。
             if (!Application.isPlaying)
@@ -262,10 +269,16 @@ namespace JH
             InitializeReferences();
 
             // 按Graphic当前材质重新选择自定义材质保留或共享材质安装路径。
-            InitializeSharedFlowMaterial();
+            InitializeSharedFlowMaterial(updateVersion);
+            if (!IsCurrentMaterialUpdate(updateVersion)) return;
 
             // 材质能力变化后立即重新生成顶点进度或顶点Alpha路径。
             MarkVerticesDirty();
+        }
+
+        private bool IsCurrentMaterialUpdate(int updateVersion)
+        {
+            return !isDestroying && this && materialUpdateVersion == updateVersion;
         }
 
         /// <summary>
@@ -462,7 +475,8 @@ namespace JH
             InitializeReferences();
 
             // 仅在Graphic没有自定义材质时安装共享流动材质，保留原有特殊Shader效果。
-            InitializeSharedFlowMaterial();
+            InitializeSharedFlowMaterial(++materialUpdateVersion);
+            if (isDestroying || !this) return;
 
             // Unity 6的TMP不经过Graphic网格修改器，必须使用其正式渲染前事件修改全部材质网格。
             SubscribeTMPPreRenderText();
@@ -497,22 +511,21 @@ namespace JH
 
         private void OnDestroy()
         {
+            isDestroying = true;
+            ++materialUpdateVersion;
+            var previousMaterial = installedSharedFlowMaterial;
+            // 恢复材质也会触发回调；销毁期间不允许迟到调用重新登记所有权。
+            installedSharedFlowMaterial = null;
+
             // 销毁前无条件解除TMP事件，禁止委托持有已经销毁的UIFlowMeshEffect实例。
             UnsubscribeTMPPreRenderText();
 
             // 只有本组件主动安装且仍未被外部替换的共享材质才恢复为Graphic默认材质。
-            if (graphic && installedSharedFlowMaterial &&
-                graphic.material == installedSharedFlowMaterial)
+            if (graphic && previousMaterial && graphic.material == previousMaterial)
             {
-                // 空材质会让Graphic重新使用自身defaultMaterial，不会破坏其他自定义材质。
+                // setter会标脏；回调返回后不再访问Graphic或改写安装记录。
                 graphic.material = null;
-
-                // 材质恢复后通知Canvas重新建立可批处理的渲染状态。
-                graphic.SetMaterialDirty();
             }
-
-            // 清空安装标记，防止销毁阶段的迟到回调重复恢复材质。
-            installedSharedFlowMaterial = null;
         }
 
         private void OnCanvasHierarchyChanged()
@@ -539,10 +552,12 @@ namespace JH
 
         private void SynchronizeGroupController()
         {
+            if (isDestroying || !this) return;
             // GetComponentInParent包含自身，Controller与Graphic位于同一节点时也能登记。
             var currentController = GetComponentInParent<UIFlowGroupController>(true);
             if (groupController && groupController != currentController)
                 DetachGroupController(groupController);
+            if (isDestroying || !this) return;
             // 停用的效果保留Graphic原貌；对象或组件重新启用时再取得当时的组状态。
             if (isActiveAndEnabled && currentController)
                 currentController.RegisterFlowMeshEffect(this);
@@ -1424,10 +1439,10 @@ namespace JH
         ///  Graphic材质槽显示None时，<see cref="Graphic.material"/>仍会返回defaultMaterial，
         ///  因此必须比较两者才能区分默认材质与用户显式配置的特殊材质。
         /// </remarks>
-        private void InitializeSharedFlowMaterial()
+        private void InitializeSharedFlowMaterial(int updateVersion)
         {
             // 缺少Graphic时没有可安装材质的渲染目标，保持CPU路径安全返回。
-            if (!graphic) return;
+            if (!IsCurrentMaterialUpdate(updateVersion) || !graphic) return;
 
             // TMP必须保留字体图集和SDF材质，只使用专用顶点回调完成CPU形变与淡出。
             if (graphic is TMP_Text) return;
@@ -1454,14 +1469,10 @@ namespace JH
                 return;
             }
 
-            // 直接安装同一材质资产，所有默认UI可以共享材质并保留UGUI合批条件。
-            graphic.material = materialPrefab;
-
-            // 记录材质由当前组件安装，销毁组件时才能安全恢复为defaultMaterial。
+            // setter同步回调前先登记安装关系，新组或销毁清理才能识别本组件拥有的材质。
             installedSharedFlowMaterial = materialPrefab;
-
-            // 材质变化后通知Canvas重新生成材质状态和Mask需要的Stencil变体。
-            graphic.SetMaterialDirty();
+            graphic.material = materialPrefab;
+            // setter已经标脏；返回调用方复查版本，禁止旧调用覆盖回调建立的新所有权。
         }
 
         /// <summary>
@@ -1485,6 +1496,8 @@ namespace JH
         /// </summary>
         private void MarkVerticesDirty()
         {
+            // OnDisable仍需恢复网格，只有销毁才停止；标脏回调可能在同一调用栈移除本组件。
+            if (isDestroying || !this) return;
             if (!graphic) graphic = GetComponent<Graphic>();
 
             // TMP只有在属性变化标记成立时才会重新GenerateTextMesh并触发OnPreRenderText。
