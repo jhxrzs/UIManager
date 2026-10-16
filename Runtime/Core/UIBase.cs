@@ -304,7 +304,7 @@ namespace JH
         {
             if (!this) return;
             // 已经显示时无需重复执行生命周期。
-            if (State is UIState.Showed) return;
+            if (_isUIStateInitialized && State is UIState.Showed) return;
 
             // 父链未就绪或更高优先级同组兄弟活跃时，本次请求保持零副作用拒绝。
             if (!CanScheduleShow(UIShowMode.Normal)) return;
@@ -377,7 +377,7 @@ namespace JH
         {
             // 预取消必须在任何状态和事件副作用发生前被观察。
             ThrowIfShowHideCancellationRequested(cancellationToken);
-            if (State is UIState.Showed) return;
+            if (_isUIStateInitialized && State is UIState.Showed) return;
 
             // 正常仲裁拒绝不属于异常，且不得取消当前操作或改变任何UI状态。
             if (!CanScheduleShow(UIShowMode.Normal)) return;
@@ -1005,8 +1005,10 @@ namespace JH
                     var eachParent = parents[i];
                     if (!IsCurrentParent(eachParent)) continue;
                     eachParent.ExecuteShow();
+                    if (!MaintainAutoParentResult(eachParent, operationVersion)) return false;
                     if (!MaintainCurrentShowAdmission(showMode, operationVersion)) return false;
                 }
+                _readyAutoParentChainVersion = operationVersion;
             }
 
             // 全部关系联动结束后最后确认本轮显示仍然拥有准入资格。
@@ -1052,8 +1054,10 @@ namespace JH
                     var eachParent = parents[i];
                     if (!IsCurrentParent(eachParent)) continue;
                     await UIOperationDispatcher.Continue(eachParent.ExecuteShowAsync(cancellationToken));
+                    MaintainAutoParentResult(eachParent, operationVersion, operationCts);
                     MaintainCurrentShowAdmission(showMode, operationVersion, operationCts);
                 }
+                _readyAutoParentChainVersion = operationVersion;
             }
 
             // 关系任务全部完成后再次阻止父链变化或高优先级重入让旧请求提交显示。

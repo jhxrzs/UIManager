@@ -12,6 +12,9 @@ namespace JH
     /// </summary>
     public partial class UIBase
     {
+        // 只有自动补父链阶段完成后，后续复核才要求当前父链持续就绪。
+        private int _readyAutoParentChainVersion = -1;
+
         /// <summary>
         ///  判断指定来源的显示请求当前是否具备父链和兄弟互斥组准入条件。
         /// </summary>
@@ -19,9 +22,11 @@ namespace JH
         /// <param name="parentCascadeSource">父级联请求的直接发起父UI；普通显示传null。</param>
         /// <param name="parentCascadeSourceOperationVersion">来源父UI显示事务版本；普通显示传-1。</param>
         /// <param name="isRevalidation">是否为已开始显示操作的准入复核，用于区分诊断信息。</param>
+        /// <param name="requireAutoParentsReady">自动补父链已完成，此后父链必须持续就绪。</param>
         /// <returns>显示请求可以进入状态和生命周期流程时返回true。</returns>
         private bool CanScheduleShow(UIShowMode showMode, UIBase parentCascadeSource = null,
-            int parentCascadeSourceOperationVersion = -1, bool isRevalidation = false)
+            int parentCascadeSourceOperationVersion = -1, bool isRevalidation = false,
+            bool requireAutoParentsReady = false)
         {
             // 父级联豁免只在当前UI仍直属来源父UI且来源显示事务仍有效时成立。
             if (showMode is UIShowMode.ParentCascade)
@@ -55,6 +60,14 @@ namespace JH
                 return false;
             }
 
+            if (requireAutoParentsReady && ShouldAutoShowParentChain(showMode) &&
+                !IsContinuousParentChainShowed(false, out var unavailableAutoParent))
+            {
+                LogShowRejection(ShowRejectionReason.AutoParentNotReady, showMode, isRevalidation,
+                    unavailableAutoParent);
+                return false;
+            }
+
             // 更高优先级只在同父同组且仍持有有效显示权的兄弟之间阻止当前请求。
             if (HasHigherPrioritySiblingHoldingMutex(out var blockingSibling))
             {
@@ -70,13 +83,18 @@ namespace JH
         /// <returns>存在直接父UI且整条连续父UI链均已初始化为Showed时返回true。</returns>
         private bool IsRequiredParentChainShowed(out UIBase blockingParent)
         {
+            return IsContinuousParentChainShowed(true, out blockingParent);
+        }
+
+        private bool IsContinuousParentChainShowed(bool requireDirectParent, out UIBase blockingParent)
+        {
             blockingParent = null;
             // 当前Transform没有直接父节点时无法满足显式父UI准入约束。
             var currentParent = transform.parent;
-            if (!currentParent) return false;
+            if (!currentParent) return !requireDirectParent;
 
             // 直接父Transform必须挂载UIBase，否则当前层级不属于连续父UI链。
-            if (!currentParent.TryGetComponent<UIBase>(out var parentUI)) return false;
+            if (!currentParent.TryGetComponent<UIBase>(out var parentUI)) return !requireDirectParent;
 
             // 沿现有UIBase关系规则逐级检查，遇到首个非UI父节点后结束连续父链。
             while (parentUI)
@@ -372,8 +390,28 @@ namespace JH
                     showMode,
                     parentCascadeSource,
                     parentCascadeSourceOperationVersion,
-                    isRevalidation: true)) return true;
+                    isRevalidation: true,
+                    requireAutoParentsReady: _readyAutoParentChainVersion == operationVersion)) return true;
 
+            return StopCurrentShow(operationVersion, operationCts);
+        }
+
+        /// <summary>父调用结束后确认实际结果；仅等待任务结束不能证明父已成功显示。</summary>
+        private bool MaintainAutoParentResult(UIBase parent, int operationVersion,
+            CancellationTokenSource operationCts = null)
+        {
+            if (!ValidateCurrentShowHideAction(operationVersion, operationCts)) return false;
+            // 回调已改变层级时不再要求旧父，最新连续父链由阶段结束后的统一复核处理。
+            if (!IsCurrentParent(parent)) return true;
+            if (parent._isUIStateInitialized && parent.State is UIState.Showed && parent.gameObject.activeInHierarchy)
+                return true;
+
+            LogShowRejection(ShowRejectionReason.AutoParentNotReady, UIShowMode.Normal, true, parent);
+            return StopCurrentShow(operationVersion, operationCts);
+        }
+
+        private bool StopCurrentShow(int operationVersion, CancellationTokenSource operationCts)
+        {
             // 新隐藏请求会递增版本并取消当前异步令牌，确保已启动显示行为能够完整收口。
             ExecuteHide();
 

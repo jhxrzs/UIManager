@@ -8,6 +8,7 @@ namespace JH
         {
             MissingRequiredParent,
             RequiredParentNotReady,
+            AutoParentNotReady,
             HigherPrioritySibling,
             CascadeSourceUnavailable,
             CascadeParentChanged,
@@ -33,6 +34,10 @@ namespace JH
                     $"互斥组 {mutexGroup} 中面板「{GetSchedulingPath(relatedPanel.transform)}」持有更高优先级；" +
                     $"目标优先级 {mutexPriority}，持有者优先级 {relatedPanel.mutexPriority}，" +
                     $"持有者状态={relatedPanel.State}。",
+                ShowRejectionReason.AutoParentNotReady =>
+                    $"自动父链未就绪：父链面板「{GetSchedulingPath(relatedPanel.transform)}」未成功完成显示" +
+                    $"（状态={relatedPanel.State}，已初始化={relatedPanel._isUIStateInitialized}，" +
+                    $"层级激活={relatedPanel.gameObject.activeInHierarchy}）。",
                 ShowRejectionReason.CascadeSourceUnavailable =>
                     "父级联来源不存在或已销毁。",
                 ShowRejectionReason.CascadeParentChanged =>
