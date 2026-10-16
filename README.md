@@ -32,7 +32,7 @@ UIManager 是一个基于 UniTask 的 Unity uGUI 界面管理库。通过组件�
 
 ## 快速开始
 
-1. 在 Canvas 下创建一个面板，添加 `UIBase` 组件。
+1. 在 Canvas 下创建一个面板，添加 `UIBase` 组件；需要配置按钮、Toggle 或键盘交互时，直接添加 `UIBaseWithShowHideInteraction`。
 2. 添加效果控制器，例如 `AlphaEffectController`。
 3. 在 Inspector 中配置初始状态、显隐时长和缓动曲线。
 4. 通过 `Show()`、`Hide()` 或异步接口控制面板。
@@ -71,7 +71,9 @@ public class PanelExample : MonoBehaviour
 
 同步接口在调度器空闲时立即应用对应的显隐行为；异步接口等待行为结束后再完成本轮生命周期。没有异步行为时，异步接口会执行对应的同步行为。
 
-`UIBase` 负责生命周期和界面关系，具体表现由效果控制器或自定义行为提供。需要直接配置按钮、Toggle 和键盘交互时，可使用 `UIBaseWithShowHideInteraction`。
+`UIBase` 负责生命周期和界面关系，具体表现由效果控制器或自定义行为提供。同一 GameObject 只能添加一个 `UIBase` 或其派生组件；`UIBaseWithShowHideInteraction` 已包含面板能力，无需再添加 `UIBase`。
+
+已有面板需要更换为交互组件时，在编辑器中先记录原面板和动效配置，移除依赖 `UIBase` 的动效，再移除旧面板组件；添加 `UIBaseWithShowHideInteraction` 后恢复面板、动效配置及外部引用。原有资源中已经重复配置的面板也应整理为一个组件，避免状态与动效分别绑定到不同实例。
 
 配置的按钮、Toggle 监听会在面板销毁时自动解除，隐藏时保留，不影响控件上的其他监听。直接使用交互实体时，重复调用 `Init(panel)` 会先解除旧绑定；不再使用时调用 `Unbind()` 释放监听。
 

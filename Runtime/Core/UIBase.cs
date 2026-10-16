@@ -12,6 +12,7 @@ namespace JH
     ///  UI面板基类，实现UI的同步显隐、异步显隐以及层级关系联动。
     /// </summary>
     [RequireComponent(typeof(CanvasGroup))]
+    [DisallowMultipleComponent]
     public partial class UIBase : MonoBehaviour, IShowUI, IHideUI, IShowUIAsync, IHideUIAsync
     {
         /// <summary>
